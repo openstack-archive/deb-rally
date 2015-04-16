@@ -1,0 +1,5 @@
+rally (0.0.3-1) unstable; urgency=medium
+
+  * Initial release. (Closes: #XXXXXX)
+
+ -- Thomas Goirand <zigo@debian.org>  Thu, 16 Apr 2015 21:14:06 +0200

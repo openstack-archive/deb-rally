@@ -1,0 +1,123 @@
+Source: rally
+Section: net
+Priority: optional
+Maintainer: PKG OpenStack <openstack-devel@lists.alioth.debian.org>
+Uploaders: Thomas Goirand <zigo@debian.org>
+Build-Depends: debhelper (>= 9),
+               dh-python,
+               openstack-pkg-tools,
+               python-all (>= 2.6.6-3~),
+               python-pbr,
+               python-setuptools,
+               python-sphinx,
+Build-Depends-Indep: python-babel (>= 1.3),
+                     python-boto (>= 2.32.1),
+                     python-ceilometerclient (>= 1.0.13),
+                     python-cinderclient (>= 1:1.1.0),
+                     python-coverage (>= 3.6),
+                     python-decorator (>= 3.4.0),
+                     python-designateclient (>= 1.0.0),
+                     python-fixtures (>= 0.3.14),
+                     python-glanceclient (>= 1:0.15.0),
+                     python-hacking,
+                     python-heatclient (>= 0.3.0),
+                     python-ironicclient (>= 0.2.1),
+                     python-iso8601 (>= 0.1.9),
+                     python-jinja2 (>= 2.6),
+                     python-jsonschema (>= 2.0.0),
+                     python-keystoneclient (>= 1:1.1.0),
+                     python-mock (>= 1.0),
+                     python-netaddr (>= 0.7.12),
+                     python-neutronclient (>= 2.3.11),
+                     python-novaclient (>= 1:2.22.0),
+                     python-oslo.config (>= 1:1.9.3),
+                     python-oslo.db (>= 1.7.0),
+                     python-oslo.i18n (>= 1.5.0),
+                     python-oslo.log (>= 1.0.0),
+                     python-oslo.serialization (>= 1.4.0),
+                     python-oslo.utils (>= 1.4.0),
+                     python-oslosphinx (>= 2.5.0),
+                     python-oslotest (>= 1.5.1),
+                     python-paramiko (>= 1.13.0),
+                     python-prettytable (>= 0.7),
+                     python-psycopg2,
+                     python-requests (>= 2.2.0),
+                     python-saharaclient (>= 0.8.0),
+                     python-simplejson (>= 2.2.0),
+                     python-six (>= 1.9.0),
+                     python-sqlalchemy (>= 0.9.7),
+                     python-swiftclient (>= 1:2.2.0),
+                     python-testtools (>= 0.9.36),
+                     python-troveclient (>= 1.0.7),
+                     python-yaml,
+                     python-zaqarclient (>= 0.0.3),
+                     subunit (>= 0.0.18),
+                     testrepository (>= 0.0.18),
+Standards-Version: 3.9.6
+Homepage: https://github.com/stackforge/rally
+Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/rally.git;a=summary
+Vcs-Git: git://anonscm.debian.org/openstack/rally.git
+
+Package: python-rally
+Section: python
+Architecture: all
+Depends: python-babel (>= 1.3),
+         python-boto (>= 2.32.1),
+         python-ceilometerclient (>= 1.0.13),
+         python-cinderclient (>= 1:1.1.0),
+         python-decorator (>= 3.4.0),
+         python-designateclient (>= 1.0.0),
+         python-fixtures (>= 0.3.14),
+         python-glanceclient (>= 1:0.15.0),
+         python-heatclient (>= 0.3.0),
+         python-ironicclient (>= 0.2.1),
+         python-iso8601 (>= 0.1.9),
+         python-jinja2 (>= 2.6),
+         python-jsonschema (>= 2.0.0),
+         python-keystoneclient (>= 1:1.1.0),
+         python-netaddr (>= 0.7.12),
+         python-neutronclient (>= 2.3.11),
+         python-novaclient (>= 1:2.22.0),
+         python-oslo.config (>= 1:1.9.3),
+         python-oslo.db (>= 1.7.0),
+         python-oslo.i18n (>= 1.5.0),
+         python-oslo.log (>= 1.0.0),
+         python-oslo.serialization (>= 1.4.0),
+         python-oslo.utils (>= 1.4.0),
+         python-paramiko (>= 1.13.0),
+         python-prettytable (>= 0.7),
+         python-psycopg2,
+         python-requests (>= 2.2.0),
+         python-saharaclient (>= 0.8.0),
+         python-simplejson (>= 2.2.0),
+         python-six (>= 1.9.0),
+         python-sqlalchemy (>= 0.9.7),
+         python-swiftclient (>= 1:2.2.0),
+         python-troveclient (>= 1.0.7),
+         python-yaml (>= 3.1.0),
+         python-zaqarclient (>= 0.0.3),
+         subunit (>= 0.0.18),
+         ${misc:Depends},
+         ${python:Depends},
+Description: benchmark System for OpenStack
+ Rally is a Benchmark-as-a-Service project for OpenStack.
+ .
+ Rally is intended to provide the community with a benchmarking tool that is
+ capable of performing specific, complicated and reproducible test cases on
+ real deployment scenarios.
+ .
+ This package contains the Python code.
+
+Package: rally
+Architecture: all
+Depends: python-rally (= ${binary:Version}),
+         ${misc:Depends},
+         ${python:Depends},
+Description: benchmark System for OpenStack
+ Rally is a Benchmark-as-a-Service project for OpenStack.
+ .
+ Rally is intended to provide the community with a benchmarking tool that is
+ capable of performing specific, complicated and reproducible test cases on
+ real deployment scenarios.
+ .
+ This package contains the command line and configuration file.
