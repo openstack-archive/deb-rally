@@ -41,3 +41,6 @@ override_dh_install:
 	install -D -m 0644 $(CURDIR)/etc/rally.bash_completion $(CURDIR)/debian/rally/etc/bash_completion.d/rally
 	install -D -m 0644 $(CURDIR)/etc/rally/rally.conf.sample $(CURDIR)/debian/rally/usr/share/rally/rally.conf
 	sed -i 's|^[ \t#]connection[ \t]*=|connection=sqlite:///var/lib/rally/rally.db|' $(CURDIR)/debian/rally/usr/share/rally/rally.conf
+
+	# This shells script is broken, so I'm removing it.
+	rm $(CURDIR)/debian/rally/usr/share/rally/samples/tasks/support/instance_linpack.sh
