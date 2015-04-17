@@ -7,7 +7,7 @@ if [ "${1}" = "remove" ] && [ -r /usr/share/debconf/confmodule ] && [ -r /usr/sh
 	db_get rally/configure_db || true
 	if [ "$RET" = "true" ] ; then
 		. /usr/share/dbconfig-common/dpkg/prerm
-		dbc_go rally-common $@
+		dbc_go rally $@
 	fi
 fi
 
