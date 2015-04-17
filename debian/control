@@ -75,6 +75,7 @@ Depends: python-babel,
          python-jinja2,
          python-jsonschema,
          python-keystoneclient (>= 1:1.1.0),
+         python-mysqldb,
          python-netaddr,
          python-neutronclient (>= 2.3.11),
          python-novaclient (>= 2:2.22.0),
@@ -96,6 +97,7 @@ Depends: python-babel,
          python-troveclient (>= 1.0.7),
          python-yaml,
          python-zaqarclient (>= 0.0.3),
+         sqlite3,
          subunit,
          ${misc:Depends},
          ${python:Depends},
@@ -110,7 +112,8 @@ Description: benchmark System for OpenStack
 
 Package: rally
 Architecture: all
-Depends: python-rally (= ${binary:Version}),
+Depends: dbconfig-common,
+         python-rally (= ${binary:Version}),
          ${misc:Depends},
          ${python:Depends},
 Description: benchmark System for OpenStack

@@ -27,13 +27,17 @@ ifeq (,$(findstring nocheck, $(DEB_BUILD_OPTIONS)))
 	done
 endif
 
+override_dh_auto_build:
+	dh_auto_build
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func rally.config
+	/usr/share/openstack-pkg-tools/pkgos_insert_include pkgos_func rally.postinst
+
 override_dh_clean:
 	dh_clean
+	rm -rf build debian/rally.config debian/rally.postinst
 
 override_dh_install:
 	dh_install --fail-missing -Xetc/bash_completion.d/rally.bash_completion
 	install -D -m 0644 $(CURDIR)/etc/rally.bash_completion $(CURDIR)/debian/rally/etc/bash_completion.d/rally
-	install -D -m 0640 $(CURDIR)/etc/rally/rally.conf.sample $(CURDIR)/debian/rally/etc/rally/rally.conf
-
-override_dh_auto_build:
-	dh_auto_build
+	install -D -m 0644 $(CURDIR)/etc/rally/rally.conf.sample $(CURDIR)/debian/rally/usr/share/rally/rally.conf
+	sed -i 's|^[ \t#]connection[ \t]*=|connection=sqlite:///var/lib/rally/rally.db|' $(CURDIR)/debian/rally/usr/share/rally/rally.conf

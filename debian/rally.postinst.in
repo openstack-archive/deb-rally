@@ -1,0 +1,21 @@
+#!/bin/sh
+
+set -e
+
+#PKGOS-INCLUDE#
+
+if [ "$1" = "configure" ] || [ "$1" = "reconfigure" ] ; then
+	. /usr/share/debconf/confmodule
+	. /usr/share/dbconfig-common/dpkg/postinst
+
+	pkgos_var_user_group rally
+	pkgos_write_new_conf rally rally.conf
+	db_get rally/configure_db
+	if [ "$RET" = "true" ]; then
+		pkgos_dbc_postinst /etc/rally/rally.conf database connection rally $@
+	fi
+fi
+
+#DEBHELPER#
+
+exit

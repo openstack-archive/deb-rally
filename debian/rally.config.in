@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -e
+
+. /usr/share/debconf/confmodule
+
+CONF=/etc/rally/rally.conf
+
+#PKGOS-INCLUDE#
+
+pkgos_var_user_group rally
+pkgos_dbc_read_conf -pkg rally ${CONF} database connection rally $@
+
+exit 0

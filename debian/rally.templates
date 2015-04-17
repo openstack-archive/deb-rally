@@ -1,0 +1,26 @@
+# These templates have been reviewed by the debian-l10n-english
+# team
+#
+# If modifications/additions/rewording are needed, please ask
+# debian-l10n-english@lists.debian.org for advice.
+#
+# Even minor modifications require translation updates and such
+# changes should be coordinated with translators and reviewers.
+
+Template: rally/configure_db
+Type: boolean
+Default: false
+_Description: Set up a database for Rally?
+ No database has been set up for rally to use. Before continuing, you should
+ make sure you have the following information:
+ .
+ * the type of database that you want to use;
+ * the database server hostname (that server must allow TCP connections from this
+ machine);
+ * a username and password to access the database.
+ .
+ If some of these requirements are missing, do not choose this option and run with
+ regular SQLite support.
+ .
+ You can change this setting later on by running "dpkg-reconfigure -plow
+ rally".

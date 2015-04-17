@@ -1,0 +1,57 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: rally\n"
+"Report-Msgid-Bugs-To: rally@packages.debian.org\n"
+"POT-Creation-Date: 2015-04-17 15:20+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid "Set up a database for Rally?"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"No database has been set up for rally to use. Before continuing, you should "
+"make sure you have the following information:"
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"* the type of database that you want to use; * the database server hostname "
+"(that server must allow TCP connections from this machine); * a username and "
+"password to access the database."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"If some of these requirements are missing, do not choose this option and run "
+"with regular SQLite support."
+msgstr ""
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"You can change this setting later on by running \"dpkg-reconfigure -plow "
+"rally\"."
+msgstr ""
