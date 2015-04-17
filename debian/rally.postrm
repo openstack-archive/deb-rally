@@ -19,6 +19,8 @@ if [ "${1}" = "purge" ] ; then
 			fi
 		fi
 	fi
+	rm -f /etc/rally/rally.conf
+	rmdir --ignore-fail-on-non-empty /etc/rally || true
 fi
 
 #DEBHELPER#
