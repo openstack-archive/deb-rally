@@ -102,7 +102,7 @@ Depends: python-babel,
          subunit,
          ${misc:Depends},
          ${python:Depends},
-Description: benchmark System for OpenStack
+Description: benchmark System for OpenStack - Python code
  Rally is a Benchmark-as-a-Service project for OpenStack.
  .
  Rally is intended to provide the community with a benchmarking tool that is
@@ -113,11 +113,12 @@ Description: benchmark System for OpenStack
 
 Package: rally
 Architecture: all
-Depends: dbconfig-common,
+Depends: adduser,
+         dbconfig-common,
          python-rally (= ${binary:Version}),
          ${misc:Depends},
          ${python:Depends},
-Description: benchmark System for OpenStack
+Description: benchmark System for OpenStack - command line and configuration
  Rally is a Benchmark-as-a-Service project for OpenStack.
  .
  Rally is intended to provide the community with a benchmarking tool that is
