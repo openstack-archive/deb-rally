@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: rally\n"
 "Report-Msgid-Bugs-To: rally@packages.debian.org\n"
-"POT-Creation-Date: 2015-04-17 15:20+0200\n"
+"POT-Creation-Date: 2015-05-14 23:42+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -35,9 +35,10 @@ msgstr ""
 #. Description
 #: ../rally.templates:2001
 msgid ""
-"* the type of database that you want to use; * the database server hostname "
-"(that server must allow TCP connections from this machine); * a username and "
-"password to access the database."
+" * the type of database that you want to use;\n"
+" * the database server hostname (that server must allow TCP\n"
+"   connections from this machine);\n"
+" * a username and password to access the database."
 msgstr ""
 
 #. Type: boolean
