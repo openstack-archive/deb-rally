@@ -1,4 +1,4 @@
-rally (0.0.3-3) UNRELEASED; urgency=medium
+rally (0.0.3-2) unstable; urgency=medium
 
   * Added pt.po Portuguese translation (Closes: #784599).
   * Fixed rally.templates, thanks to bubulle (Closes: #785143).
