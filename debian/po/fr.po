@@ -1,0 +1,357 @@
+# Translation of rally debconf templates to french.
+# Copyright (C) 2012, French l10n team <debian-l10n-french@lists.debian.org>
+# This file is distributed under the same license as the rally package.
+# Julien Patriarca <leatherface@debian.org>, 2012-2014.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: rally\n"
+"Report-Msgid-Bugs-To: rally@packages.debian.org\n"
+"POT-Creation-Date: 2015-04-17 15:20+0200\n"
+"PO-Revision-Date: 2015-05-12 15:42+0100\n"
+"Last-Translator: Julien Patriarca <leatherface@debian.org>\n"
+"Language-Team: FRENCH <debian-l10n-french@lists.debian.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.7.6\n"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid "Set up a database for Rally?"
+msgstr "Faut-il installer une base de données pour Rally ?"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"No database has been set up for rally to use. Before continuing, you should "
+"make sure you have the following information:"
+msgstr ""
+"Aucune base de données n'a été installée pour Rally. Si vous souhaitez en "
+"installer une maintenant, veuillez vous assurer de disposer de toutes les "
+"informations nécessaires :"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"* the type of database that you want to use; * the database server hostname "
+"(that server must allow TCP connections from this machine); * a username and "
+"password to access the database."
+msgstr ""
+" * le type de bases de données que vous souhaitez utiliser; * le nom d'hôte "
+"du serveur de bases de données (qui doit autoriser les connexions TCP depuis "
+"cette machine); * un identifiant et un mot de passe pour accéder à la base "
+"de données."
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"If some of these requirements are missing, do not choose this option and run "
+"with regular SQLite support."
+msgstr ""
+"Si certains de ces prérequis sont manquants, ne choisissez pas cette option "
+"et utilisez la gestion SQLite de base."
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"You can change this setting later on by running \"dpkg-reconfigure -plow "
+"rally\"."
+msgstr ""
+"Vous pouvez changer ce réglage plus tard en exécutant « dpkg-reconfigure -"
+"plow rally »."
+
+#~ msgid "Auth server hostname:"
+#~ msgstr "Nom d'hôte du serveur d'authentification : "
+
+#~ msgid ""
+#~ "Please specify the URL of your Nova authentication server. Typically this "
+#~ "is also the URL of your OpenStack Identity Service (Keystone)."
+#~ msgstr ""
+#~ "Veuillez indiquer l'adresse URL du serveur d'authentification Nova. En "
+#~ "général, il s'agit également de l'adresse URL du Service d'identité "
+#~ "OpenStack (Keystone)."
+
+#~ msgid "Auth server tenant name:"
+#~ msgstr "Nom d'espace client du serveur d'authentification :"
+
+#~ msgid "Auth server username:"
+#~ msgstr "Identifiant pour le serveur d'authentification :"
+
+#~ msgid "Auth server password:"
+#~ msgstr "Mot de passe pour le serveur d'authentification :"
+
+#~ msgid "API to activate:"
+#~ msgstr "API à activer :"
+
+#~ msgid ""
+#~ "Openstack Nova supports different API services, each of them binding on a "
+#~ "different port. Select which one rally-api should support."
+#~ msgstr ""
+#~ "OpenStack Nova prend en charge différents services API, chacun d'entre "
+#~ "eux relié à un port différent. Veuillez choisir quelle api Nova devra "
+#~ "utiliser."
+
+#~ msgid ""
+#~ "If it is a compute node that you are setting-up, then you only need to "
+#~ "run the metadata API server. If you run Cinder, then you don't need "
+#~ "osapi_volume (you cannot run osapi_volume and cinder-api on the same "
+#~ "server: they bind on the same port)."
+#~ msgstr ""
+#~ "Si c'est un nœud de calcul que vous installez, alors, vous n'avez qu'à "
+#~ "lancer le serveur API de métadonnées. Si vous utilisez Cinder, alors, "
+#~ "vous n'avez pas besoin d'osapi_volume (vous ne pouvez pas lancer "
+#~ "osapi_volume et l'api de cinder sur le même serveur : ils sont liés au "
+#~ "même port)."
+
+#~ msgid "Value for my_ip:"
+#~ msgstr "Valeur pour my_ip : "
+
+#~ msgid "This value will be stored in the my_ip directive of rally.conf."
+#~ msgstr "Cette valeur sera enregistrée dans la directive my_ip de rally.conf."
+
+#~ msgid "Neutron server URL:"
+#~ msgstr "Adresse URL du serveur Neutron :"
+
+#~ msgid "Please enter the URL of the Neutron server."
+#~ msgstr "Veuillez indiquer l'adresse URL du serveur Neutron."
+
+#~ msgid "Neutron admin tenant name:"
+#~ msgstr "Nom d'espace client de l’administrateur de Neutron :"
+
+#~ msgid ""
+#~ "Nova needs to be able to communicate with Neutron through Keystone. "
+#~ "Therefore Nova needs to know the Neutron admin tenant, username and "
+#~ "password."
+#~ msgstr ""
+#~ "Nova doit pouvoir communiquer avec Neutron au travers de Keystone. "
+#~ "Cependant Nova a besoin de connaître l’espace client, l'identifiant et le "
+#~ "mot de passe de l’administrateur de Neutron."
+
+#~ msgid "Please enter the name of the admin tenant for Neutron."
+#~ msgstr ""
+#~ "Veuillez entrer le nom de l’espace client de l’administrateur pour "
+#~ "Neutron."
+
+#~ msgid "Neutron administrator username:"
+#~ msgstr "Identifiant de l'administrateur pour Neutron :"
+
+#~ msgid "Please enter the username of the Neutron administrator."
+#~ msgstr "Veuillez indiquer l'identifiant de l'administrateur pour Neutron."
+
+#~ msgid "Neutron administrator password:"
+#~ msgstr "Mot de passe de l'administrateur de Neutron :"
+
+#~ msgid "Please enter the password of the Neutron administrator."
+#~ msgstr "Veuillez indiquer le mot de passe de l'administrateur de Neutron."
+
+#~ msgid "IP address of your RabbitMQ host:"
+#~ msgstr "Adresse IP de l'hôte RabbitMQ :"
+
+#~ msgid ""
+#~ "In order to interoperate with other components of OpenStack, this package "
+#~ "needs to connect to a central RabbitMQ server."
+#~ msgstr ""
+#~ "Afin de pouvoir interagir avec d'autres composants d'OpenStack, ce paquet "
+#~ "doit se connecter à un serveur centralisé RabbitMQ."
+
+#~ msgid "Please specify the IP address of that server."
+#~ msgstr "Veuillez indiquer l'adresse IP de ce serveur."
+
+#~ msgid "Username for connection to the RabbitMQ server:"
+#~ msgstr "Identifiant de connexion au serveur RabbitMQ :"
+
+#~ msgid "Please specify the username used to connect to the RabbitMQ server."
+#~ msgstr ""
+#~ "Veuillez indiquer l'identifiant à utiliser pour se connecter au serveur "
+#~ "RabbitMQ."
+
+#~ msgid "Password for connection to the RabbitMQ server:"
+#~ msgstr "Mot de passe de connexion au serveur RabbitMQ :"
+
+#~ msgid "Please specify the password used to connect to the RabbitMQ server."
+#~ msgstr ""
+#~ "Veuillez indiquer le mot de passe à utiliser pour se connecter au serveur "
+#~ "RabbitMQ :"
+
+#~ msgid "Address of the XenAPI dom0:"
+#~ msgstr "Adresse pour le dom0 de XenAPI :"
+
+#~ msgid ""
+#~ "Nova Compute Xen needs to know the address of the server running XenAPI. "
+#~ "You can enter an IP address, or a fully qualified domain name if it "
+#~ "resolves correctly."
+#~ msgstr ""
+#~ "Nova Compute Xen a besoin de connaître l'adresse du serveur qui exécute "
+#~ "XenAPI. Vous pouvez indiquer l'adresse IP ou un nom de domaine pleinement "
+#~ "qualifié s'il peut être résolu correctement."
+
+#~ msgid ""
+#~ "This may be a server running Citrix XenServer, the CentOS Xen Cloud "
+#~ "Platform (XCP) appliance installed from an ISO image, or even the Kronos "
+#~ "Project's XCP (available in Debian and Ubuntu as the package xcp-xapi)."
+#~ msgstr ""
+#~ "Cela peut être un serveur exécutant Citrix XenServer, le serveur CentOS "
+#~ "Xen Cloud Platform (XCP) installé depuis une image ISO, ou même la "
+#~ "version XCP du projet Kronos (disponible dans Debian et Ubuntu en tant "
+#~ "que paquet xcp-api)."
+
+#~ msgid "This can later be edited in /etc/rally/rally-compute.conf."
+#~ msgstr ""
+#~ "Ce choix peut être modifié ultérieurement en modifiant le fichier /etc/"
+#~ "rally/rally-compute.conf."
+
+#~ msgid "Username to connect to XenAPI:"
+#~ msgstr "Identifiant de connexion à XenAPI :"
+
+#~ msgid ""
+#~ "Please enter the username used to connect to your XenAPI (XCP server)."
+#~ msgstr ""
+#~ "Veuillez indiquer l'identifiant à utiliser pour se connecter à XenAPI "
+#~ "(serveur XCP)."
+
+#~ msgid "Password to connect to XenAPI:"
+#~ msgstr "Mot de passe de connexion à XenAPI :"
+
+#~ msgid ""
+#~ "Please enter the password used to connect to your XenAPI (XCP server)."
+#~ msgstr ""
+#~ "Veuillez indiquer le mot de passe à utiliser pour la connexion à XenAPI "
+#~ "(serveur XCP)."
+
+#~ msgid "Register Nova in the keystone endpoint catalog?"
+#~ msgstr "Enregistrer Nova dans le catalogue de points d'accès de Keystone ?"
+
+#~ msgid ""
+#~ "Each Openstack services (each API) should be registered in order to be "
+#~ "accessible. This is done using \"keystone service-create\" and \"keystone "
+#~ "endpoint-create\". Select if you want to run these commands now."
+#~ msgstr ""
+#~ "Chaque service OpenStack (chaque API) doit être enregistré pour être "
+#~ "accessible. Cela peut être fait en utilisant « keystone service-create » "
+#~ "et « keystone endpoint-create ». Choisissez si vous souhaitez lancer ces "
+#~ "commandes maintenant."
+
+#~ msgid ""
+#~ "Note that you will need to have an up and running keystone server on "
+#~ "which to connect using the Keystone auth token."
+#~ msgstr ""
+#~ "Veuillez noter que vous aurez besoin d'un serveur Keystone fonctionnel "
+#~ "sur lequel se connecter pour utiliser le jeton d'authentification "
+#~ "Keystone."
+
+#~ msgid "Keystone IP address:"
+#~ msgstr "Adresse IP de Keystone : "
+
+#~ msgid ""
+#~ "Enter the IP address of your keystone server, so that rally-api can "
+#~ "contact Keystone to do the Nova service and endpoint creation."
+#~ msgstr ""
+#~ "Veuillez indiquer l'adresse IP du serveur Keystone, pour que l'api de "
+#~ "Nova puisse contacter Keystone pour établir le service Nova et créer le "
+#~ "point d'accès."
+
+#~ msgid "Keystone Auth Token:"
+#~ msgstr "Jeton d'authentification Keystone : "
+
+#~ msgid ""
+#~ "To configure its endpoint in Keystone, rally-api needs the Keystone auth "
+#~ "token."
+#~ msgstr ""
+#~ "Pour configurer son point d'accès dans Keystone, l'api de Nova a besoin "
+#~ "du jeton d'authentification Keystone."
+
+#~ msgid "Nova endpoint IP address:"
+#~ msgstr "Adresse IP du point d'accès Nova : "
+
+#~ msgid ""
+#~ "Enter the IP address that will be used to contact Nova (eg: the Nova "
+#~ "endpoint IP address)."
+#~ msgstr ""
+#~ "Veuillez indiquer l'adresse IP qui sera utilisée pour contacter Nova "
+#~ "(ex : l'adresse IP du point d'accès Nova)."
+
+#~ msgid ""
+#~ "This IP address should be accessible from the clients that will use this "
+#~ "service, so if you are installing a public cloud, this should be a public "
+#~ "IP address."
+#~ msgstr ""
+#~ "Cette adresse IP doit être accessible depuis les clients qui utiliseront "
+#~ "ce service, donc si vous installez un nuage public, ce devra être une "
+#~ "adresse IP publique."
+
+#~ msgid "Name of the region to register:"
+#~ msgstr "Nom de la région à enregistrer : "
+
+#~ msgid ""
+#~ "Openstack can be used using availability zones, with each region "
+#~ "representing a location. Please enter the zone that you wish to use when "
+#~ "registering the endpoint."
+#~ msgstr ""
+#~ "OpenStack prend en charge l'utilisation de zones disponibles, avec chaque "
+#~ "région représentant un lieu. Veuillez entrer la zone que vous souhaitez "
+#~ "utiliser lors de l'enregistrement d'un point d'accès."
+
+#~ msgid "Type of console daemon to start at boot time:"
+#~ msgstr "Type de démon console à lancer au démarrage : "
+
+#~ msgid ""
+#~ "Nova Console supports 3 types of consoles. One is specific to Xen, called "
+#~ "XVP (Xen VNC Proxy), and the other daemon supports KVM. While the SPICE "
+#~ "protocol is normally faster than VNC, it also requires support for web "
+#~ "sockets in your browser, and that is a feature only very modern browsers "
+#~ "have support for."
+#~ msgstr ""
+#~ "Nova Console prend en charge 3 types de consoles. Une est spécifique à "
+#~ "Xen, appelée XVP (Xen VNC Proxy) et l'autre démon prend en charge KVM. "
+#~ "Alors que le protocole SPICE est théoriquement plus rapide que VNC, il "
+#~ "requiert également l’emploi des sockets web dans le navigateur, et c'est "
+#~ "une fonctionnalité dont seuls les navigateurs les plus modernes disposent."
+
+#~ msgid "This can later be edited in /etc/default/rally-consoleproxy."
+#~ msgstr ""
+#~ "Ce choix peut être modifié ultérieurement en modifiant le fichier /etc/"
+#~ "default/rally-consoleproxy."
+
+#~ msgid "IP address on Nova management network:"
+#~ msgstr "Adresse IP de Nova sur le réseau de gestion :"
+
+#~ msgid ""
+#~ "Please enter the IP address for this physical node on the private network "
+#~ "being used for OpenStack Compute management."
+#~ msgstr ""
+#~ "Veuillez entrer une adresse IP pour ce nœud physique sur le réseau privé "
+#~ "utilisé pour gérer OpenStack Compute."
+
+#, fuzzy
+#~| msgid "Value for my_ip:"
+#~ msgid "Value for neutron_url:"
+#~ msgstr "Valeur pour my_ip : "
+
+#~ msgid "Start rally services at boot?"
+#~ msgstr "Faut-il démarrer les services Nova au démarrage ?"
+
+#~ msgid ""
+#~ "Please choose whether you want to start Nova services when the machine is "
+#~ "booted up."
+#~ msgstr ""
+#~ "Veuillez choisir s'il faut démarrer les services Nova lorsque la machine "
+#~ "est démarrée."
+
+#~ msgid ""
+#~ "Enter the IP address that will be set in the rabbitmq_host directive of "
+#~ "rally.conf. If you are installing openstack-proxy-node, then the default "
+#~ "to use 127.0.0.1 is probably fine. If you are installing openstack-"
+#~ "compute-node, then enter the IP address of your proxy-node host."
+#~ msgstr ""
+#~ "Veuillez entrer l'adresse IP qui sera renseignée pour la directive "
+#~ "rabbitmq_host de rally.conf. Si vous installez openstack-proxy-node, alors "
+#~ "la valeur par défaut 127.0.0.1 devrait suffire. Si vous installez "
+#~ "openstack-compute-node, alors veuillez préciser l'adresse IP de votre "
+#~ "hôte proxy-node."
