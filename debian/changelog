@@ -2,6 +2,7 @@ rally (0.0.3-4) unstable; urgency=medium
 
   * Added French debconf translations thanks to Julien Patriarca
     <leatherface@debian.org> (Closes: #789034).
+  * Moved auto-completion file to usr/share/bash-completion/completions.
 
  -- Thomas Goirand <zigo@debian.org>  Wed, 17 Jun 2015 14:43:18 +0200
 

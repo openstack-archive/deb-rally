@@ -38,7 +38,8 @@ override_dh_clean:
 
 override_dh_install:
 	dh_install --fail-missing -Xetc/bash_completion.d/rally.bash_completion
-	install -D -m 0644 $(CURDIR)/etc/rally.bash_completion $(CURDIR)/debian/rally/etc/bash_completion.d/rally
+	
+	install -D -m 0644 $(CURDIR)/etc/rally.bash_completion $(CURDIR)/debian/rally/usr/share/bash-completion/completions/rally
 	install -D -m 0644 $(CURDIR)/etc/rally/rally.conf.sample $(CURDIR)/debian/rally/usr/share/rally/rally.conf
 	sed -i 's|^[ \t#]connection[ \t]*=|connection=sqlite:///var/lib/rally/rally.db|' $(CURDIR)/debian/rally/usr/share/rally/rally.conf
 
