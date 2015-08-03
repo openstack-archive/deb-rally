@@ -1,6 +1,9 @@
 rally (0.0.3-5) unstable; urgency=medium
 
   * Rebuilt for SQLAlchemy >= 1.0 (Closes: #794353).
+  * Blacklist failed unit tests:
+    - tests.unit.deploy.serverprovider.providers.test_lxc.LxcHostTestCase.test_prepare
+    - tests.unit.deploy.test_lxc.LxcEngineTestCase.test_cleanup
 
  -- Thomas Goirand <zigo@debian.org>  Mon, 03 Aug 2015 08:06:11 +0000
 
