@@ -1,0 +1,67 @@
+# Danish translation rally.
+# Copyright (C) 2015 rally og nedenstående oversættere.
+# This file is distributed under the same license as the rally package.
+# Joe Hansen (joedalton2@yahoo.dk), 2015.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: rally\n"
+"Report-Msgid-Bugs-To: rally@packages.debian.org\n"
+"POT-Creation-Date: 2015-05-14 23:42+0200\n"
+"PO-Revision-Date: 2015-09-23 17:30+01:00\n"
+"Last-Translator: Joe Hansen <joedalton2@yahoo.dk>\n"
+"Language-Team: Danish <debian-l10n-danish@lists.debian.org>\n"
+"Language: da\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid "Set up a database for Rally?"
+msgstr "Sæt en database op for Rally?"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"No database has been set up for rally to use. Before continuing, you should "
+"make sure you have the following information:"
+msgstr ""
+"Ingen database er blevet opsat for rally. Før du fortsætter, skal du sikre "
+"dig at du har den følgende information:"
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+" * the type of database that you want to use;\n"
+" * the database server hostname (that server must allow TCP\n"
+"   connections from this machine);\n"
+" * a username and password to access the database."
+msgstr ""
+" * databasetype\n"
+" * serverværtsnavn for databasen (serveren skal tillade TCP-\n"
+"   forbindelser fra denne maskine)\n"
+" * et brugernavn og adgangskode for databasen."
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"If some of these requirements are missing, do not choose this option and run "
+"with regular SQLite support."
+msgstr ""
+"Hvis nogle af disse krav mangler, så vælg ikke denne indstilling og afvikl "
+"med normal SQLite-understøttelse."
+
+#. Type: boolean
+#. Description
+#: ../rally.templates:2001
+msgid ""
+"You can change this setting later on by running \"dpkg-reconfigure -plow "
+"rally\"."
+msgstr ""
+"Du kan ændre denne indstilling senere ved at køre »dpkg-reconfigure -plow "
+"rally«."
