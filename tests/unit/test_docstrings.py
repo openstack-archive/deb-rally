@@ -13,11 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from rally.benchmark.scenarios import base
-from rally.benchmark.sla import base as sla_base
-from rally.common import utils
-from rally import deploy
-from rally.deploy import serverprovider
+from rally.common.plugin import discover
+from rally.common.plugin import info
+from rally.deployment import engine
+from rally.deployment.serverprovider import provider
+from rally.task import scenario
+from rally.task import sla
 from tests.unit import test
 
 
@@ -30,7 +31,7 @@ class DocstringsTestCase(test.TestCase):
         self.assertIsNotNone(obj.__doc__,
                              "%s doesn't have a class-level docstring." %
                              obj)
-        doc = utils.parse_docstring(obj.__doc__)
+        doc = info.parse_docstring(obj.__doc__)
         self.assertIsNotNone(
             doc["short_description"],
             "Docstring for %s should have a one-line description." % obj)
@@ -41,52 +42,40 @@ class DocstringsTestCase(test.TestCase):
 
     def test_all_scenarios_have_docstrings(self):
         ignored_params = ["self", "scenario_obj"]
-        for scenario_group in utils.itersubclasses(base.Scenario):
-            if scenario_group.__module__.startswith("tests."):
-                continue
-
-            for method in dir(scenario_group):
-                if base.Scenario.is_scenario(scenario_group, method):
-                    scenario = getattr(scenario_group, method)
-                    scenario_name = scenario_group.__name__ + "." + method
-                    self.assertIsNotNone(scenario.__doc__,
-                                         "%s doensn't have a docstring." %
-                                         scenario_name)
-                    doc = utils.parse_docstring(scenario.__doc__)
-                    short_description = doc["short_description"]
-                    self.assertIsNotNone(short_description,
-                                         "Docstring for %s should have "
-                                         "at least a one-line description." %
-                                         scenario_name)
-                    self.assertFalse(short_description.startswith("Test"),
-                                     "One-line description for %s "
-                                     "should be declarative and not start "
-                                     "with 'Test(s) ...'" % scenario_name)
-                    params_count = scenario.__code__.co_argcount
-                    params = scenario.__code__.co_varnames[:params_count]
-                    documented_params = [p["name"] for p in doc["params"]]
-                    for param in params:
-                        if param not in ignored_params:
-                            self.assertIn(param, documented_params,
-                                          "Docstring for %(scenario)s should "
-                                          "describe the '%(param)s' parameter "
-                                          "in the :param <name>: clause." %
-                                          {"scenario": scenario_name,
-                                           "param": param})
-
-    def test_all_scenario_groups_have_docstrings(self):
-        for scenario_group in utils.itersubclasses(base.Scenario):
-            self._assert_class_has_docstrings(scenario_group,
-                                              long_description=False)
+        for scenario_inst in scenario.Scenario.get_all():
+            self.assertIsNotNone(scenario_inst.__doc__,
+                                 "%s doensn't have a docstring." %
+                                 scenario_inst.get_name())
+            doc = info.parse_docstring(scenario_inst.__doc__)
+            short_description = doc["short_description"]
+            self.assertIsNotNone(short_description,
+                                 "Docstring for %s should have "
+                                 "at least a one-line description." %
+                                 scenario_inst.get_name())
+            self.assertFalse(short_description.startswith("Test"),
+                             "One-line description for %s "
+                             "should be declarative and not start "
+                             "with 'Test(s) ...'" % scenario_inst.get_name())
+            params_count = scenario_inst.__code__.co_argcount
+            params = scenario_inst.__code__.co_varnames[:params_count]
+            documented_params = [p["name"] for p in doc["params"]]
+            for param in params:
+                if param not in ignored_params:
+                    self.assertIn(param, documented_params,
+                                  "Docstring for %(scenario)s should "
+                                  "describe the '%(param)s' parameter "
+                                  "in the :param <name>: clause." %
+                                  {"scenario": scenario_inst.get_name(),
+                                   "param": param})
 
     def test_all_deploy_engines_have_docstrings(self):
-        for deploy_engine in utils.itersubclasses(deploy.EngineFactory):
+        for deploy_engine in engine.Engine.get_all():
             self._assert_class_has_docstrings(deploy_engine)
 
     def test_all_server_providers_have_docstrings(self):
-        for provider in utils.itersubclasses(serverprovider.ProviderFactory):
-            self._assert_class_has_docstrings(provider)
+        for _provider in provider.ProviderFactory.get_all():
+            self._assert_class_has_docstrings(_provider)
 
     def test_all_SLA_have_docstrings(self):
-        for sla in utils.itersubclasses(sla_base.SLA):
-            self._assert_class_has_docstrings(sla, long_description=False)
+        for s in discover.itersubclasses(sla.SLA):
+            self._assert_class_has_docstrings(s, long_description=False)

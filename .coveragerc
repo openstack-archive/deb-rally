@@ -3,5 +3,5 @@ branch = True
 source = rally
 
 [report]
-ignore-errors = True
-precision = 2
+ignore_errors = True
+precision = 3

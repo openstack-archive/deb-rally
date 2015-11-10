@@ -98,9 +98,6 @@
         users:
           tenants: 1
           users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
 
   HeatStacks.create_and_delete_stack:
     -
@@ -112,9 +109,6 @@
         users:
           tenants: 1
           users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
 
   Authenticate.keystone:
     -
@@ -301,8 +295,9 @@
           name: "TestVM|cirros.*uec"
         floating_network: "net04_ext"
         use_floatingip: true
-        script: "/home/rally/.rally/extra/instance_dd_test.sh"
-        interpreter: "/bin/sh"
+        command:
+          script_file: "~/.rally/extra/instance_dd_test.sh"
+          interpreter: "/bin/sh"
         username: "cirros"
       runner:
         type: "constant"
@@ -468,15 +463,16 @@
         failure_rate:
           max: 0
 
-  Requests.check_response:
+  HttpRequests.check_request:
     -
       args:
-          url: "http://git.openstack.org/cgit"
-          response: 200
+        url: "http://www.example.com"
+        method: "GET"
+        status_code: 200
       runner:
         type: "constant"
-        times: 1
-        concurrency: 1
+        times: 2
+        concurrency: 2
       sla:
         failure_rate:
           max: 0

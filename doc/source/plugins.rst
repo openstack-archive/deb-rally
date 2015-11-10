@@ -18,59 +18,85 @@
 Rally Plugins
 =============
 
+Rally Plugin Reference
+---------------------------
+
+Rally has a plugin oriented architecture - in other words Rally team is trying
+to make all places of code pluggable. Such architecture leds to the big amount
+of plugins. :ref:`Rally Plugins Reference page <plugin_reference>` contains a
+full list with detailed descriptions of all official Rally plugins.
+
+
 How plugins work
 ----------------
 
-Rally provides an opportunity to create and use a **custom benchmark scenario, runner or context** as a **plugin**:
+Rally provides an opportunity to create and use a **custom benchmark
+scenario, runner or context** as a **plugin**:
 
 .. image:: ./images/Rally-Plugins.png
    :align: center
 
-Plugins can be quickly written and used, with no need to contribute them to the actual Rally code. Just place a python module with your plugin class into the **/opt/rally/plugins** or **~/.rally/plugins** directory (or it's subdirectories), and it will be autoloaded.
+Placement
+---------
+
+Plugins can be quickly written and used, with no need to contribute
+them to the actual Rally code. Just place a python module with your
+plugin class into the ``/opt/rally/plugins`` or ``~/.rally/plugins``
+directory (or its subdirectories), and it will be
+autoloaded. Additional paths can be specified with the
+``--plugin-paths`` argument, or with the ``RALLY_PLUGIN_PATHS``
+environment variable, both of which accept comma-delimited
+lists. Both ``--plugin-paths`` and ``RALLY_PLUGIN_PATHS`` can list
+either plugin module files, or directories containing plugins. For
+instance, both of these are valid:
+
+.. code-block:: bash
+
+    rally --plugin-paths /rally/plugins ...
+    rally --plugin-paths /rally/plugins/foo.py,/rally/plugins/bar.py ...
+
+You can also use a script ``unpack_plugins_samples.sh`` from
+``samples/plugins`` which will automatically create the
+``~/.rally/plugins`` directory.
 
 
 Example: Benchmark scenario as a plugin
 ---------------------------------------
 
-Let's create as a plugin a simple scenario which lists flavors.
+Let's create as a plugin a simple scenario which list flavors.
 
 Creation
 ^^^^^^^^
 
 Inherit a class for your plugin from the base *Scenario* class and implement a scenario method inside it as usual. In our scenario, let us first list flavors as an ordinary user, and then repeat the same using admin clients:
 
-.. code-block:: none
+.. code-block:: python
 
-    from rally.benchmark.scenarios import base
+    from rally.task import atomic
+    from rally.task import scenario
 
 
-    class ScenarioPlugin(base.Scenario):
+    class ScenarioPlugin(scenario.Scenario):
         """Sample plugin which lists flavors."""
 
-        @base.atomic_action_timer("list_flavors")
+        @atomic.action_timer("list_flavors")
         def _list_flavors(self):
             """Sample of usage clients - list flavors
 
             You can use self.context, self.admin_clients and self.clients which are
-            initialized on scenario instanse creation"""
+            initialized on scenario instance creation"""
             self.clients("nova").flavors.list()
 
-        @base.atomic_action_timer("list_flavors_as_admin")
+        @atomic.action_timer("list_flavors_as_admin")
         def _list_flavors_as_admin(self):
             """The same with admin clients"""
             self.admin_clients("nova").flavors.list()
 
-        @base.scenario()
+        @scenario.configure()
         def list_flavors(self):
             """List flavors."""
             self._list_flavors()
             self._list_flavors_as_admin()
-
-
-Placement
-^^^^^^^^^
-
-Put the python module with your plugin class into the **/opt/rally/plugins** or **~/.rally/plugins** directory or it's subdirectories and it will be autoloaded. You can also use a script **unpack_plugins_samples.sh** from **samples/plugins** which will automatically create the **~/.rally/plugins** directory.
 
 
 Usage
@@ -78,7 +104,7 @@ Usage
 
 You can refer to your plugin scenario in the benchmark task configuration files just in the same way as to any other scenarios:
 
-.. code-block:: none
+.. code-block:: json
 
     {
         "ScenarioPlugin.list_flavors": [
@@ -109,9 +135,9 @@ Creation
 
 Inherit a class for your plugin from the base *Context* class. Then, implement the Context API: the *setup()* method that creates a flavor and the *cleanup()* method that deletes it.
 
-.. code-block:: none
+.. code-block:: python
 
-    from rally.benchmark.context import base
+    from rally.task import context
     from rally.common import log as logging
     from rally import consts
     from rally import osclients
@@ -119,13 +145,13 @@ Inherit a class for your plugin from the base *Context* class. Then, implement t
     LOG = logging.getLogger(__name__)
 
 
-    @base.context(name="create_flavor", order=1000)
-    class CreateFlavorContext(base.Context):
+    @context.configure(name="create_flavor", order=1000)
+    class CreateFlavorContext(context.Context):
         """This sample create flavor with specified options before task starts and
         delete it after task completion.
 
         To create your own context plugin, inherit it from
-        rally.benchmark.context.base.Context
+        rally.task.context.Context
         """
 
         CONFIG_SCHEMA = {
@@ -154,7 +180,7 @@ Inherit a class for your plugin from the base *Context* class. Then, implement t
         def setup(self):
             """This method is called before the task start"""
             try:
-                # use rally.osclients to get nessesary client instance
+                # use rally.osclients to get necessary client instance
                 nova = osclients.Clients(self.context["admin"]["endpoint"]).nova()
                 # and than do what you need with this client
                 self.context["flavor"] = nova.flavors.create(
@@ -185,19 +211,12 @@ Inherit a class for your plugin from the base *Context* class. Then, implement t
                     LOG.warning(msg)
 
 
-
-Placement
-^^^^^^^^^
-
-Put the python module with your plugin class into the **/opt/rally/plugins** or **~/.rally/plugins** directory or it's subdirectories and it will be autoloaded. You can also use a script **unpack_plugins_samples.sh** from **samples/plugins** which will automatically create the **~/.rally/plugins** directory.
-
-
 Usage
 ^^^^^
 
 You can refer to your plugin context in the benchmark task configuration files just in the same way as to any other contexts:
 
-.. code-block:: none
+.. code-block:: json
 
     {
         "Dummy.dummy": [
@@ -231,34 +250,43 @@ Let's create as a plugin an SLA (success criterion) which checks whether the ran
 Creation
 ^^^^^^^^
 
-Inherit a class for your plugin from the base *SLA* class and implement its API (the *check()* method):
+Inherit a class for your plugin from the base *SLA* class and implement its API (the *add_iteration(iteration)*, the *details()* method):
 
-.. code-block:: none
+.. code-block:: python
 
-    from rally.benchmark.sla import base
+    from rally.task import sla
+    from rally.common.i18n import _
 
-
-    class MaxDurationRange(base.SLA):
+    @sla.configure(name="max_duration_range")
+    class MaxDurationRange(sla.SLA):
         """Maximum allowed duration range in seconds."""
-        OPTION_NAME = "max_duration_range"
-        CONFIG_SCHEMA = {"type": "number", "minimum": 0.0,
-                         "exclusiveMinimum": True}
 
-        @staticmethod
-        def check(criterion_value, result):
-            durations = [r["duration"] for r in result if not r.get("error")]
-            durations_range = max(durations) - min(durations)
-            success = durations_range <= criterion_value
-            msg = (_("Maximum duration range per iteration %ss, actual %ss")
-                   % (criterion_value, durations_range))
-            return base.SLAResult(success, msg)
+        CONFIG_SCHEMA = {
+            "type": "number",
+            "minimum": 0.0,
+        }
 
+        def __init__(self, criterion_value):
+            super(MaxDurationRange, self).__init__(criterion_value)
+            self._min = 0
+            self._max = 0
 
+        def add_iteration(self, iteration):
+          # Skipping failed iterations (that raised exceptions)
+            if iteration.get("error"):
+                return self.success   # This field is defined in base class
 
-Placement
-^^^^^^^^^
+            # Updating _min and _max values
+            self._max = max(self._max, iteration["duration"])
+            self._min = min(self._min, iteration["duration"])
 
-Put the python module with your plugin class into the **/opt/rally/plugins** or **~/.rally/plugins** directory or it's subdirectories and it will be autoloaded. You can also use a script **unpack_plugins_samples.sh** from **samples/plugins** which will automatically create the **~/.rally/plugins** directory.
+            # Updating successfulness based on new max and min values
+            self.success = self._max - self._min <= self.criterion_value
+            return self.success
+
+        def details(self):
+            return (_("%s - Maximum allowed duration range: %.2f%% <= %.2f%%") %
+                    (self.status(), self._max - self._min, self.criterion_value))
 
 
 Usage
@@ -266,7 +294,7 @@ Usage
 
 You can refer to your SLA in the benchmark task configuration files just in the same way as to any other SLA:
 
-.. code-block:: none
+.. code-block:: json
 
     {
         "Dummy.dummy": [
@@ -303,22 +331,21 @@ Creation
 
 Inherit a class for your plugin from the base *ScenarioRunner* class and implement its API (the *_run_scenario()* method):
 
-.. code-block:: none
+.. code-block:: python
 
     import random
 
-    from rally.benchmark.runners import base
+    from rally.task import runner
     from rally import consts
 
 
-    class RandomTimesScenarioRunner(base.ScenarioRunner):
+    @runner.configure(name="random_times")
+    class RandomTimesScenarioRunner(runner.ScenarioRunner):
         """Sample of scenario runner plugin.
 
-        Run scenario random number of times, which is choosen between min_times and
+        Run scenario random number of times, which is chosen between min_times and
         max_times.
         """
-
-        __execution_type__ = "random_times"
 
         CONFIG_SCHEMA = {
             "type": "object",
@@ -346,25 +373,17 @@ Inherit a class for your plugin from the base *ScenarioRunner* class and impleme
 
             for i in range(random.randrange(min_times, max_times)):
                 run_args = (i, cls, method_name,
-                            base._get_scenario_context(context), args)
-                result = base._run_scenario_once(run_args)
+                            runner._get_scenario_context(context), args)
+                result = runner._run_scenario_once(run_args)
                 # use self.send_result for result of each iteration
                 self._send_result(result)
-
-
-
-Placement
-^^^^^^^^^
-
-Put the python module with your plugin class into the **/opt/rally/plugins** or **~/.rally/plugins** directory or it's subdirectories and it will be autoloaded. You can also use a script **unpack_plugins_samples.sh** from **samples/plugins** which will automatically create the **~/.rally/plugins** directory.
-
 
 Usage
 ^^^^^
 
 You can refer to your scenario runner in the benchmark task configuration files just in the same way as to any other runners. Don't forget to put you runner-specific parameters to the configuration as well (*"min_times"* and *"max_times"* in our example):
 
-.. code-block:: none
+.. code-block:: json
 
     {
         "Dummy.dummy": [
@@ -387,4 +406,4 @@ You can refer to your scenario runner in the benchmark task configuration files 
 
 
 
-Different plugin samples are available `here <https://github.com/stackforge/rally/tree/master/samples/plugins>`_.
+Different plugin samples are available `here <https://github.com/openstack/rally/tree/master/samples/plugins>`_.

@@ -21,8 +21,9 @@ import traceback
 
 import yaml
 
-from rally.benchmark.scenarios import base
-from rally.benchmark import engine
+from rally import api
+from rally.task import scenario
+from rally.task import engine
 from tests.unit import test
 
 
@@ -32,9 +33,10 @@ class TaskSampleTestCase(test.TestCase):
         os.pardir, os.pardir, os.pardir,
         "samples", "tasks")
 
-    @mock.patch("rally.benchmark.engine.BenchmarkEngine"
+    @mock.patch("rally.task.engine.BenchmarkEngine"
                 "._validate_config_semantic")
-    def test_schema_is_valid(self, mock_semantic):
+    def test_schema_is_valid(self,
+                             mock_benchmark_engine__validate_config_semantic):
         scenarios = set()
 
         for dirname, dirnames, filenames in os.walk(self.samples_path):
@@ -48,24 +50,22 @@ class TaskSampleTestCase(test.TestCase):
 
                 with open(full_path) as task_file:
                     try:
-                        task_config = yaml.safe_load(task_file.read())
+                        task_config = yaml.safe_load(api.Task.render_template
+                                                     (task_file.read()))
                         eng = engine.BenchmarkEngine(task_config,
                                                      mock.MagicMock())
                         eng.validate()
                     except Exception:
                         print(traceback.format_exc())
-                        self.assertTrue(False,
-                                        "Wrong task config %s" % full_path)
+                        self.fail("Invalid task file: %s" % full_path)
                     else:
                         scenarios.update(task_config.keys())
 
-        # TODO(boris-42): We should refactor scenarios framework add "_" to
-        #                 all non-benchmark methods.. Then this test will pass.
-        missing = set(base.Scenario.list_benchmark_scenarios()) - scenarios
+        missing = set(s.get_name() for s in scenario.Scenario.get_all())
+        missing -= scenarios
         # check missing scenario is not from plugin
-        missing = [scenario for scenario in list(missing) if
-                   base.Scenario.get_by_name(scenario.split(".")[0]).
-                   __module__.startswith("rally")]
+        missing = [s for s in list(missing)
+                   if scenario.Scenario.get(s).__module__.startswith("rally")]
         self.assertEqual(missing, [],
                          "These scenarios don't have samples: %s" % missing)
 
@@ -76,7 +76,11 @@ class TaskSampleTestCase(test.TestCase):
                     continue
                 full_path = os.path.join(dirname, filename)
                 with open(full_path) as task_file:
-                    json.load(task_file)
+                    try:
+                        json.loads(api.Task.render_template(task_file.read()))
+                    except Exception:
+                        print(traceback.format_exc())
+                        self.fail("Invalid JSON file: %s" % full_path)
 
     def test_task_config_pair_existance(self):
         inexistent_paths = []
@@ -113,11 +117,11 @@ class TaskSampleTestCase(test.TestCase):
 
                 if os.path.exists(yaml_path) and os.path.exists(json_path):
                     with open(json_path) as json_file:
-                        with open(yaml_path) as yaml_file:
-                            json_config = yaml.safe_load(json_file.read())
-                            yaml_config = yaml.safe_load(yaml_file.read())
-                            self.assertEqual(
-                                json_config,
-                                yaml_config,
-                                "Sample task configs are not equal:\n%s\n%s" %
-                                (yaml_path, json_path))
+                        json_config = yaml.safe_load(api.Task.render_template
+                                                     (json_file.read()))
+                    with open(yaml_path) as yaml_file:
+                        yaml_config = yaml.safe_load(api.Task.render_template
+                                                     (yaml_file.read()))
+                    self.assertEqual(json_config, yaml_config,
+                                     "Sample task configs are not equal:"
+                                     "\n%s\n%s" % (yaml_path, json_path))

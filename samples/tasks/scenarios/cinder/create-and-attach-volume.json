@@ -1,3 +1,4 @@
+{% set flavor_name = flavor_name or "m1.tiny" %}
 {
     "CinderVolumes.create_and_attach_volume": [
         {
@@ -7,7 +8,32 @@
                     "name": "^cirros.*uec$"
                 },
                 "flavor": {
-                    "name": "m1.nano"
+                    "name": "{{flavor_name}}"
+                }
+            },
+            "runner": {
+                "type": "constant",
+                "times": 5,
+                "concurrency": 1
+            },
+            "context": {
+                "users": {
+                    "tenants": 2,
+                    "users_per_tenant": 2
+                }
+            }
+        },
+        {
+            "args": {
+                "size": {
+                    "min": 1,
+                    "max": 5
+                },
+                "flavor": {
+                    "name": "{{flavor_name}}"
+                },
+                "image": {
+                    "name": "^cirros.*uec$"
                 }
             },
             "runner": {

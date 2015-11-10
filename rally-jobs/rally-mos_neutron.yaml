@@ -274,3 +274,55 @@
       sla:
         failure_rate:
           max: 0
+
+  CinderVolumes.create_volume_backup:
+    -
+      args:
+        size: 1
+        do_delete: True
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  CinderVolumes.create_and_restore_volume_backup:
+    -
+      args:
+        size: 1
+        do_delete: True
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  CinderVolumes.create_and_list_volume_backups:
+    -
+      args:
+        size: 1
+        detailed: True
+        do_delete: True
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0

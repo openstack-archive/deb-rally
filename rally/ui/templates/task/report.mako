@@ -1,9 +1,9 @@
 ## -*- coding: utf-8 -*-
 <%inherit file="/base.mako"/>
 
-<%block name="html_attr"> ng-app="BenchmarkApp"</%block>
+<%block name="html_attr"> ng-app="TaskApp"</%block>
 
-<%block name="title_text">Benchmark Task Report</%block>
+<%block name="title_text">Rally Task Report</%block>
 
 <%block name="libs">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/nvd3/1.1.15-beta/nv.d3.min.css">
@@ -14,8 +14,8 @@
 
 <%block name="js_before">
     "use strict";
-    if (typeof angular === "object") { angular.module("BenchmarkApp", []).controller(
-      "BenchmarkController", ["$scope", "$location", function($scope, $location) {
+    if (typeof angular === "object") { angular.module("TaskApp", []).controller(
+      "TaskController", ["$scope", "$location", function($scope, $location) {
 
       $scope.location = {
         /* This is a junior brother of angular's $location, that allows non-`#'
@@ -70,7 +70,7 @@
       /* Dispatch */
 
       $scope.route = function(uri) {
-        if (! $scope.scenarios) {
+        if (! ($scope.scenarios && $scope.scenarios.length)) {
           return
         }
         if (uri.path in $scope.scenarios_map) {
@@ -79,7 +79,7 @@
           $scope.nav_idx = $scope.nav_map[uri.path];
           $scope.showTab(uri.hash);
         } else {
-          $scope.scenario = undefined
+          $scope.scenario = null;
           if (uri.path === "source") {
             $scope.view = {is_source:true}
           } else {
@@ -158,43 +158,56 @@
       /* Charts */
 
       var Charts = {
-        _render: function(selector, datum, chart){
+        _render: function(selector, data, chart){
           nv.addGraph(function() {
             d3.select(selector)
-              .datum(datum)
+              .datum(data)
               .transition()
               .duration(0)
               .call(chart);
             nv.utils.windowResize(chart.update)
           })
         },
-        pie: function(selector, datum){
+        pie: function(selector, data){
           var chart = nv.models.pieChart()
             .x(function(d) { return d.key })
-            .y(function(d) { return d.value })
+            .y(function(d) { return d.values })
             .showLabels(true)
             .labelType("percent")
             .donut(true)
             .donutRatio(0.25)
             .donutLabelsOutside(true);
-            this._render(selector, datum, chart)
+          var data_ = [];
+          for (var i in data) {
+            data_.push({key:data[i][0], values:data[i][1]})
+          }
+          this._render(selector, data_, chart)
         },
-        stack: function(selector, datum){
+        stack: function(selector, data, conf){
           var chart = nv.models.stackedAreaChart()
             .x(function(d) { return d[0] })
             .y(function(d) { return d[1] })
-            .useInteractiveGuideline(true)
-            .clipEdge(true);
+            .clipEdge(true)
+            .showControls(conf.controls)
+            .useInteractiveGuideline(conf.guide);
           chart.xAxis
-            .axisLabel("Iteration (order number of method's call)")
+            .axisLabel(conf.xLabel || "")
             .showMaxMin(false)
-            .tickFormat(d3.format("d"));
+            .tickFormat(d3.format(conf.xFormat || "d"));
           chart.yAxis
-            .axisLabel("Duration (seconds)")
-            .tickFormat(d3.format(",.2f"));
-          this._render(selector, datum, chart)
+            .axisLabel(conf.yLabel || "")
+            .tickFormat(d3.format(conf.yFormat || ",.3f"));
+          var data_ = [];
+          for (var i in data) {
+            var d = {key:data[i][0], values:data[i][1]};
+            if (d.key === "failed_duration") {
+              d.color = "#f00"
+            }
+            data_.push(d)
+          }
+          this._render(selector, data_, chart)
         },
-        histogram: function(selector, datum){
+        histogram: function(selector, data){
           var chart = nv.models.multiBarChart()
             .reduceXTicks(true)
             .showControls(false)
@@ -208,7 +221,7 @@
           chart.yAxis
             .axisLabel("Iterations (frequency)")
             .tickFormat(d3.format("d"));
-          this._render(selector, datum, chart)
+          this._render(selector, data, chart)
         }
       };
 
@@ -216,7 +229,21 @@
         if (! $scope.scenario) {
           return
         }
-        Charts.stack("#total-stack", $scope.scenario.iterations.iter);
+
+        Charts.stack(
+          "#total-stack", $scope.scenario.iterations.iter,
+          {xLabel: "Iteration sequence number",
+           controls: true,
+           guide: true});
+
+        if ($scope.scenario.load_profile.length) {
+           Charts.stack(
+             "#load-profile-stack",
+             $scope.scenario.load_profile,
+             {xLabel: "Timeline (seconds)",
+              xFormat: ",.2f", yFormat: "d"})
+        }
+
         Charts.pie("#total-pie", $scope.scenario.iterations.pie);
 
         if ($scope.scenario.iterations.histogram.length) {
@@ -230,8 +257,15 @@
         if (! $scope.scenario) {
           return
         }
-        Charts.stack("#atomic-stack", $scope.scenario.atomic.iter);
-        Charts.pie("#atomic-pie", $scope.scenario.atomic.pie);
+         Charts.stack(
+           "#atomic-stack",
+           $scope.scenario.atomic.iter,
+           {xLabel: "Iteration sequence number",
+            controls: true,
+            guide: true});
+         if ($scope.scenario.atomic.pie) {
+           Charts.pie("#atomic-pie", $scope.scenario.atomic.pie)
+         }
         if ($scope.scenario.atomic.histogram.length) {
           var atomic = [];
           var idx = this.atomicHistogramModel.value;
@@ -244,7 +278,7 @@
 
       $scope.renderOutput = function() {
         if ($scope.scenario) {
-          Charts.stack("#output-stack", $scope.scenario.output)
+          Charts.stack("#output-stack", $scope.scenario.output, {})
         }
       }
 
@@ -261,7 +295,7 @@
         $scope.source = ${source};
         $scope.scenarios = ${data};
         if (! $scope.scenarios.length) {
-          return $scope.showError("Benchmark has empty scenarios data")
+          return $scope.showError("No data...")
         }
         $scope.histogramOptions = [];
         $scope.totalHistogramModel = {label:'', value:0};
@@ -312,7 +346,7 @@
           if (! $scope.histogramOptions.length && sc.iterations.histogram) {
             for (var i in sc.iterations.histogram) {
               $scope.histogramOptions.push({
-                label: sc.iterations.histogram[i].method,
+                label: sc.iterations.histogram[i].view,
                 value: i
               })
             }
@@ -340,12 +374,12 @@
     .aside > div { margin-bottom: 15px }
     .aside > div div:first-child { border-top-left-radius:4px; border-top-right-radius:4px }
     .aside > div div:last-child { border-bottom-left-radius:4px; border-bottom-right-radius:4px }
-    .nav-group { color:#678; background:#eee; border:1px solid #ddd; margin-bottom:-1px; display:block; padding:8px 9px; font-weight:bold; text-aligh:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer }
-    .nav-group.expanded { color:#469 }
-    .nav-group.active { background:#428bca; background-image:linear-gradient(to bottom, #428bca 0px, #3278b3 100%); border-color:#3278b3; color:#fff }
-    .nav-item { color:#555; background:#fff; border:1px solid #ddd; font-size:12px; display:block; margin-bottom:-1px; padding:8px 10px; text-aligh:left; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; cursor:pointer }
-    .nav-item:hover { background:#f8f8f8 }
-    .nav-item.active, .nav-item.active:hover { background:#428bca; background-image:linear-gradient(to bottom, #428bca 0px, #3278b3 100%); border-color:#3278b3; color:#fff }
+    .navcls { color:#678; background:#eee; border:1px solid #ddd; margin-bottom:-1px; display:block; padding:8px 9px; font-weight:bold; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer }
+    .navcls.expanded { color:#469 }
+    .navcls.active { background:#428bca; background-image:linear-gradient(to bottom, #428bca 0px, #3278b3 100%); border-color:#3278b3; color:#fff }
+    .navmet { color:#555; background:#fff; border:1px solid #ddd; font-size:12px; display:block; margin-bottom:-1px; padding:8px 10px; text-align:left; text-overflow:ellipsis; white-space:nowrap; overflow:hidden; cursor:pointer }
+    .navmet:hover { background:#f8f8f8 }
+    .navmet.active, .navmet.active:hover { background:#428bca; background-image:linear-gradient(to bottom, #428bca 0px, #3278b3 100%); border-color:#3278b3; color:#fff }
 
     .tabs { list-style:outside none none; margin:0 0 5px; padding:0; border-bottom:1px solid #ddd }
     .tabs:after { clear:both }
@@ -376,31 +410,31 @@
     @media only screen and (min-width: 1200px) { .content-wrap { width:1180px } .content-main { width:890px } }
 </%block>
 
-<%block name="body_attr"> ng-controller="BenchmarkController"</%block>
+<%block name="body_attr"> ng-controller="TaskController"</%block>
 
-<%block name="header_text">benchmark results</%block>
+<%block name="header_text">task results</%block>
 
 <%block name="content">
     <p id="page-error" class="notify-error" style="display:none"></p>
 
     <div id="content-nav" class="aside" ng-show="scenarios.length" ng-cloack>
       <div>
-        <div class="nav-group"
+        <div class="navcls"
              ng-class="{active:view.is_main}"
-             ng-click="location.path('')">Benchmark overview</div>
-        <div class="nav-group"
+             ng-click="location.path('')">Task overview</div>
+        <div class="navcls"
              ng-class="{active:view.is_source}"
              ng-click="location.path('source', '')">Input file</div>
       </div>
       <div>
-        <div class="nav-group" title="{{n.cls}}"
+        <div class="navcls" title="{{n.cls}}"
              ng-repeat-start="n in nav track by $index"
              ng-click="showNav(n.idx)"
              ng-class="{expanded:n.idx==nav_idx}">
                 <span ng-hide="n.idx==nav_idx">&#9658;</span>
                 <span ng-show="n.idx==nav_idx">&#9660;</span>
                 {{n.cls}}</div>
-        <div class="nav-item" title="{{m.name}}"
+        <div class="navmet" title="{{m.name}}"
              ng-show="n.idx==nav_idx"
              ng-class="{active:m.ref==scenario.ref}"
              ng-click="location.path(m.ref)"
@@ -412,7 +446,7 @@
     <div id="content-main" class="content-main" ng-show="scenarios.length" ng-cloak>
 
       <div ng-show="view.is_main">
-        <h1>Benchmark overview</h1>
+        <h1>Task overview</h1>
         <table class="linked compact"
                ng-init="ov_srt='ref'; ov_dir=false">
           <thead>
@@ -443,11 +477,11 @@
                 </span>
               <th class="sortable"
                   title="Number of iterations"
-                  ng-click="ov_srt='iterations_num'; ov_dir=!ov_dir">
+                  ng-click="ov_srt='iterations_count'; ov_dir=!ov_dir">
                 Iterations
                 <span class="arrow">
-                  <b ng-show="ov_srt=='iterations_num' && !ov_dir">&#x25b4;</b>
-                  <b ng-show="ov_srt=='iterations_num' && ov_dir">&#x25be;</b>
+                  <b ng-show="ov_srt=='iterations_count' && !ov_dir">&#x25b4;</b>
+                  <b ng-show="ov_srt=='iterations_count' && ov_dir">&#x25be;</b>
                 </span>
               <th class="sortable"
                   title="Scenario runner type"
@@ -481,7 +515,7 @@
               <td>{{sc.ref}}
               <td>{{sc.load_duration | number:3}}
               <td>{{sc.full_duration | number:3}}
-              <td>{{sc.iterations_num}}
+              <td>{{sc.iterations_count}}
               <td>{{sc.runner}}
               <td>{{sc.errors.length}}
               <td>
@@ -513,10 +547,10 @@
         <script type="text/ng-template" id="overview">
           {{renderTotal()}}
 
-          <p>
+          <p class="thesis">
             Load duration: <b>{{scenario.load_duration | number:3}} s</b> &nbsp;
             Full duration: <b>{{scenario.full_duration | number:3}} s</b> &nbsp;
-            Iterations: <b>{{scenario.iterations_num}}</b> &nbsp;
+            Iterations: <b>{{scenario.iterations_count}}</b> &nbsp;
             Failures: <b>{{scenario.errors.length}}</b>
           </p>
 
@@ -546,22 +580,27 @@
           <table class="striped">
             <thead>
               <tr>
-                <th ng-repeat="i in scenario.table_cols track by $index">{{i}}
+                <th ng-repeat="i in scenario.table.cols track by $index">{{i}}
               <tr>
             </thead>
             <tbody>
               <tr ng-class="{richcolor:$last}"
-                  ng-repeat="row in scenario.table_rows track by $index">
+                  ng-repeat="row in scenario.table.rows track by $index">
                 <td ng-repeat="i in row track by $index">{{i}}
               <tr>
             </tbody>
           </table>
 
-          <h2>Charts for the Total durations</h2>
           <div class="chart">
             <svg id="total-stack"></svg>
           </div>
 
+          <h3>Load Profile</h3>
+          <div class="chart" style="height:180px" ng-show="scenario.load_profile[0][1].length">
+            <svg id="load-profile-stack"></svg>
+          </div>
+
+          <h3>Distribution</h3>
           <div class="chart lesser top-margin">
             <svg id="total-pie"></svg>
           </div>
@@ -578,11 +617,12 @@
         <script type="text/ng-template" id="details">
           {{renderDetails()}}
 
-          <h2>Charts for each Atomic Action</h2>
+          <h2>Atomic Action Durations</h2>
           <div class="chart">
             <svg id="atomic-stack"></svg>
           </div>
 
+          <h3>Distribution</h3>
           <div class="chart lesser top-margin">
             <svg id="atomic-pie"></svg>
           </div>
@@ -606,7 +646,7 @@
         </script>
 
         <script type="text/ng-template" id="failures">
-          <h2>Benchmark failures (<ng-pluralize
+          <h2>Task failures (<ng-pluralize
             count="scenario.errors.length"
             when="{'1': '1 iteration', 'other': '{} iterations'}"></ng-pluralize> failed)
           </h2>
@@ -638,7 +678,7 @@
         </script>
 
         <script type="text/ng-template" id="task">
-          <h2>Scenario Configuration</h2>
+          <h2>Subtask Configuration</h2>
           <pre class="code">{{scenario.config}}</pre>
         </script>
       </div>

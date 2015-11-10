@@ -27,11 +27,11 @@ from novaclient import exceptions as nova_exceptions
 import six
 from swiftclient import exceptions as swift_exceptions
 
-from rally.benchmark.context import base as base_ctx
-from rally.benchmark.scenarios import base
+from rally.common import objects
 from rally.common import utils as rally_utils
 from rally import consts
-from rally import objects
+from rally.task import context
+from rally.task import scenario
 
 
 def generate_uuid():
@@ -105,15 +105,14 @@ class FakeResource(object):
 
 
 class FakeServer(FakeResource):
-
     def suspend(self):
         self.status = "SUSPENDED"
 
+    def lock(self):
+        setattr(self, "OS-EXT-STS:locked", True)
 
-class FakeFailedServer(FakeResource):
-
-    def __init__(self, manager=None):
-        super(FakeFailedServer, self).__init__(manager, status="ERROR")
+    def unlock(self):
+        setattr(self, "OS-EXT-STS:locked", False)
 
 
 class FakeImage(FakeResource):
@@ -129,12 +128,6 @@ class FakeImage(FakeResource):
 
 class FakeMurano(FakeResource):
     pass
-
-
-class FakeFailedImage(FakeResource):
-
-    def __init__(self, manager=None):
-        super(FakeFailedImage, self).__init__(manager, status="error")
 
 
 class FakeFloatingIP(FakeResource):
@@ -219,6 +212,7 @@ class FakeAlarm(FakeResource):
         self.threshold = kwargs.get("threshold")
         self.state = kwargs.get("state", "fake-alarm-state")
         self.alarm_id = kwargs.get("alarm_id", "fake-alarm-id")
+        self.state = kwargs.get("state", "ok")
         self.optional_args = kwargs.get("optional_args", {})
 
 
@@ -229,7 +223,17 @@ class FakeSample(FakeResource):
         self.counter_type = kwargs.get("counter_type", "fake-counter-type")
         self.counter_unit = kwargs.get("counter_unit", "fake-counter-unit")
         self.counter_volume = kwargs.get("counter_volume", 100)
-        self.resource_id = kwargs.get("resource_id", "fake-resource-id")
+
+    @property
+    def resource_id(self):
+        return "fake-resource-id"
+
+    def to_dict(self):
+        return {"counter_name": self.counter_name,
+                "counter_type": self.counter_type,
+                "counter_unit": self.counter_unit,
+                "counter_volume": self.counter_volume,
+                "resource_id": self.resource_id}
 
 
 class FakeVolume(FakeResource):
@@ -379,12 +383,6 @@ class FakeServerManager(FakeManager):
             self.resources_order.remove(resource)
 
 
-class FakeFailedServerManager(FakeServerManager):
-
-    def create(self, name, image_id, flavor_id, **kwargs):
-        return self._create(FakeFailedServer, name)
-
-
 class FakeImageManager(FakeManager):
 
     def __init__(self):
@@ -426,12 +424,6 @@ class FakePackageManager(FakeManager):
         return package
 
 
-class FakeFailedImageManager(FakeImageManager):
-
-    def create(self, name, copy_from, container_format, disk_format):
-        return self._create(FakeFailedImage, name)
-
-
 class FakeFloatingIPsManager(FakeManager):
 
     def create(self):
@@ -448,6 +440,14 @@ class FakeTenantsManager(FakeManager):
 
     def create(self, name):
         return self._cache(FakeTenant(self, name))
+
+    def update(self, tenant_id, name=None, description=None):
+        tenant = self.get(tenant_id)
+        name = name or (tenant.name + "_updated")
+        desc = description or (tenant.name + "_description_updated")
+        tenant.name = name
+        tenant.description = desc
+        return self._cache(tenant)
 
 
 class FakeNetworkManager(FakeManager):
@@ -708,6 +708,9 @@ class FakeRolesManager(FakeManager):
         role.name = "admin"
         return [role, ]
 
+    def add_user_role(self, user, role, tenant):
+        pass
+
 
 class FakeAlarmManager(FakeManager):
 
@@ -755,6 +758,9 @@ class FakeSampleManager(FakeManager):
         sample = FakeSample(self, **kwargs)
         return [self._cache(sample)]
 
+    def list(self):
+        return ["fake-samples"]
+
 
 class FakeMeterManager(FakeManager):
 
@@ -763,6 +769,9 @@ class FakeMeterManager(FakeManager):
 
 
 class FakeCeilometerResourceManager(FakeManager):
+
+    def get(self, resource_id):
+        return ["fake-resource-info"]
 
     def list(self):
         return ["fake-resource"]
@@ -892,7 +901,7 @@ class FakeObjectManager(FakeManager):
 
     def put_object(self, container_name, object_name, content, **kwargs):
         container = self.find(name=container_name)
-        if container is None or object_name in container.items:
+        if container is None:
             raise swift_exceptions.ClientException("Object PUT failed")
         container.items[object_name] = content
         return mock.MagicMock()
@@ -915,11 +924,8 @@ class FakeServiceCatalog(object):
 
 class FakeGlanceClient(object):
 
-    def __init__(self, failed_image_manager=False):
-        if failed_image_manager:
-            self.images = FakeFailedImageManager()
-        else:
-            self.images = FakeImageManager()
+    def __init__(self):
+        self.images = FakeImageManager()
 
 
 class FakeMuranoClient(object):
@@ -943,10 +949,7 @@ class FakeNovaClient(object):
 
     def __init__(self, failed_server_manager=False):
         self.images = FakeImageManager()
-        if failed_server_manager:
-            self.servers = FakeFailedServerManager(self.images)
-        else:
-            self.servers = FakeServerManager(self.images)
+        self.servers = FakeServerManager(self.images)
         self.floating_ips = FakeFloatingIPsManager()
         self.floating_ip_pools = FakeFloatingIPPoolsManager()
         self.networks = FakeNetworkManager()
@@ -1031,6 +1034,9 @@ class FakeNeutronClient(object):
         self.__subnets = {}
         self.__routers = {}
         self.__ports = {}
+        self.__pools = {}
+        self.__vips = {}
+        self.__fips = {}
         self.__tenant_id = kwargs.get("tenant_id", generate_uuid())
 
         self.format = "json"
@@ -1079,6 +1085,51 @@ class FakeNeutronClient(object):
         self.__networks[network_id] = network
         return {"network": network}
 
+    def create_pool(self, data):
+        pool = setup_dict(data["pool"],
+                          required=["lb_method", "protocol", "subnet_id"],
+                          defaults={"name": generate_name("pool_"),
+                          "admin_state_up": True})
+        if pool["subnet_id"] not in self.__subnets:
+            raise neutron_exceptions.NeutronClientException
+        pool_id = generate_uuid()
+
+        pool.update({"id": pool_id,
+                     "status": "PENDING_CREATE",
+                     "tenant_id": self.__tenant_id})
+        self.__pools[pool_id] = pool
+        return {"pool": pool}
+
+    def create_vip(self, data):
+        vip = setup_dict(data["vip"],
+                         required=["protocol_port", "protocol", "subnet_id",
+                                   "pool_id"],
+                         defaults={"name": generate_name("vip_"),
+                                   "admin_state_up": True})
+        if (vip["subnet_id"] not in self.__subnets) or (vip["pool_id"] not in
+                                                        self.__pools):
+            raise neutron_exceptions.NeutronClientException
+        vip_id = generate_uuid()
+
+        vip.update({"id": vip_id,
+                    "status": "PENDING_CREATE",
+                    "tenant_id": self.__tenant_id})
+        self.__vips[vip_id] = vip
+        return {"vip": vip}
+
+    def create_floatingip(self, data):
+        fip = setup_dict(data["floatingip"],
+                         required=["floating_network"],
+                         defaults={"admin_state_up": True})
+        if (fip["floating_network"] not in self.__nets):
+            raise neutron_exceptions.NeutronClientException
+        fip_id = generate_uuid()
+
+        fip.update({"id": fip_id,
+                    "tenant_id": self.__tenant_id})
+        self.__fips[fip_id] = fip
+        return {"fip": fip}
+
     def create_port(self, data):
         port = setup_dict(data["port"],
                           required=["network_id"],
@@ -1120,12 +1171,11 @@ class FakeNeutronClient(object):
         return {"router": router}
 
     def create_subnet(self, data):
-        subnet = setup_dict(data["subnet"],
-                            required=["network_id", "cidr", "ip_version"],
-                            defaults={
-                                "name": generate_name("subnet_"),
-                                "dns_nameservers": ["8.8.8.8", "8.8.4.4"]
-                            })
+        subnet = setup_dict(
+            data["subnet"],
+            required=["network_id", "cidr", "ip_version"],
+            defaults={"name": generate_name("subnet_"),
+                      "dns_nameservers": ["8.8.8.8", "8.8.4.4"]})
         if subnet["network_id"] not in self.__networks:
             raise neutron_exceptions.NeutronClientException
 
@@ -1142,25 +1192,28 @@ class FakeNeutronClient(object):
         self.__subnets[subnet_id] = subnet
         return {"subnet": subnet}
 
-    def update_network(self, network_id, data):
-        if network_id not in self.__networks:
+    def update_resource(self, resource_id, resource_dict, data):
+        if resource_id not in resource_dict:
             raise neutron_exceptions.NeutronClientException
-        self.__networks[network_id].update(data)
+        self.resource_list[resource_id].update(data)
+
+    def update_network(self, network_id, data):
+        self.update_resource(network_id, self.__networks, data)
+
+    def update_pool(self, pool_id, data):
+        self.update_resource(pool_id, self.__pools, data)
+
+    def update_vip(self, vip_id, data):
+        self.update_resource(vip_id, self.__vips, data)
 
     def update_subnet(self, subnet_id, data):
-        if subnet_id not in self.__subnets:
-            raise neutron_exceptions.NeutronClientException
-        self.__subnets[subnet_id].update(data)
+        self.update_resource(subnet_id, self.__subnets, data)
 
     def update_port(self, port_id, data):
-        if port_id not in self.__ports:
-            raise neutron_exceptions.NeutronClientException
-        self.__ports[port_id].update(data)
+        self.update_resource(port_id, self.__ports, data)
 
     def update_router(self, router_id, data):
-        if router_id not in self.__routers:
-            raise neutron_exceptions.NeutronClientException
-        self.__routers[router_id].update(data)
+        self.update_resource(router_id, self.__routers, data)
 
     def delete_network(self, network_id):
         if network_id not in self.__networks:
@@ -1170,6 +1223,24 @@ class FakeNeutronClient(object):
                 # Network is in use by port
                 raise neutron_exceptions.NeutronClientException
         del self.__networks[network_id]
+        return ""
+
+    def delete_pool(self, pool_id):
+        if pool_id not in self.__pools:
+            raise neutron_exceptions.NeutronClientException
+        del self.__pools[pool_id]
+        return ""
+
+    def delete_vip(self, vip_id):
+        if vip_id not in self.__vips:
+            raise neutron_exceptions.NeutronClientException
+        del self.__vips[vip_id]
+        return ""
+
+    def delete_floatingip(self, fip_id):
+        if fip_id not in self.__fips:
+            raise neutron_exceptions.NeutronClientException
+        del self.__fips[fip_id]
         return ""
 
     def delete_port(self, port_id):
@@ -1206,6 +1277,14 @@ class FakeNeutronClient(object):
         nets = self._filter(self.__networks.values(), search_opts)
         return {"networks": nets}
 
+    def list_pools(self, **search_opts):
+        pools = self._filter(self.__pools.values(), search_opts)
+        return {"pools": pools}
+
+    def list_vips(self, **search_opts):
+        vips = self._filter(self.__vips.values(), search_opts)
+        return {"vips": vips}
+
     def list_ports(self, **search_opts):
         ports = self._filter(self.__ports.values(), search_opts)
         return {"ports": ports}
@@ -1217,6 +1296,10 @@ class FakeNeutronClient(object):
     def list_subnets(self, **search_opts):
         subnets = self._filter(self.__subnets.values(), search_opts)
         return {"subnets": subnets}
+
+    def list_floatingips(self, **search_opts):
+        fips = self._filter(self.__fips.values(), search_opts)
+        return {"floatingips": fips}
 
     def remove_interface_router(self, router_id, data):
         subnet_id = data["subnet_id"]
@@ -1436,7 +1519,7 @@ class FakeRunner(object):
     }
 
 
-class FakeScenario(base.Scenario):
+class FakeScenario(scenario.Scenario):
 
     def idle_time(self):
         return 0
@@ -1466,8 +1549,8 @@ class FakeTimer(rally_utils.Timer):
         return 0
 
 
-@base_ctx.context("fake", order=1)
-class FakeContext(base_ctx.Context):
+@context.configure(name="fake", order=1)
+class FakeContext(context.Context):
 
     CONFIG_SCHEMA = {
         "type": "object",
@@ -1480,6 +1563,13 @@ class FakeContext(base_ctx.Context):
         "additionalProperties": False
     }
 
+    def __init__(self, context_obj=None):
+        context_obj = context_obj or {}
+        context_obj.setdefault("config", {})
+        context_obj["config"].setdefault("fake", None)
+        context_obj.setdefault("task", mock.MagicMock())
+        super(FakeContext, self).__init__(context_obj)
+
     def setup(self):
         pass
 
@@ -1487,6 +1577,12 @@ class FakeContext(base_ctx.Context):
         pass
 
 
+@context.configure(name="fake_hidden_context", order=1, hidden=True)
+class FakeHiddenContext(FakeContext):
+    pass
+
+
+@context.configure(name="fake_user_context", order=1)
 class FakeUserContext(FakeContext):
 
     admin = {
@@ -1500,15 +1596,13 @@ class FakeUserContext(FakeContext):
     }
     tenants = {"uuid": {"name": "tenant"}}
 
-    def __init__(self, context):
-        context.setdefault("task", mock.MagicMock())
-        super(FakeUserContext, self).__init__(context)
-
-        context.setdefault("admin", FakeUserContext.admin)
-        context.setdefault("users", [FakeUserContext.user])
-        context.setdefault("tenants", FakeUserContext.tenants)
-        context.setdefault("scenario_name",
-                           "NovaServers.boot_server_from_volume_and_delete")
+    def __init__(self, ctx):
+        super(FakeUserContext, self).__init__(ctx)
+        self.context.setdefault("admin", FakeUserContext.admin)
+        self.context.setdefault("users", [FakeUserContext.user])
+        self.context.setdefault("tenants", FakeUserContext.tenants)
+        self.context.setdefault(
+            "scenario_name", "NovaServers.boot_server_from_volume_and_delete")
 
 
 class FakeDeployment(dict):
@@ -1516,6 +1610,16 @@ class FakeDeployment(dict):
 
 
 class FakeTask(dict):
+
+    def __init__(self, task=None, temporary=False, **kwargs):
+        self.is_temporary = temporary
+        self.task = task or kwargs
+        self.set_failed = mock.Mock()
+
+    def __getitem__(self, key):
+        if key in self:
+            return self[key]
+        return self.task[key]
 
     def to_dict(self):
         return self

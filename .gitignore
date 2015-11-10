@@ -9,6 +9,7 @@
 dist
 build
 eggs
+.eggs
 parts
 bin
 var
@@ -16,6 +17,7 @@ sdist
 develop-eggs
 .installed.cfg
 lib
+!devstack/lib
 lib64
 
 # Installer logs
@@ -39,5 +41,6 @@ doc/source/_build/
 # Mr Developer
 .mr.developer.cfg
 .project
+.idea
 .pydevproject
 *.swp

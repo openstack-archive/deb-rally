@@ -10,6 +10,10 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import tokenize
+
+import six
+
 from tests.hacking import checks
 from tests.unit import test
 
@@ -201,17 +205,18 @@ class HackingTestCase(test.TestCase):
         self._assert_bad_samples(checks.assert_equal_in, bad_lines)
 
     def test_check_no_direct_rally_objects_import(self):
-        bad_imports = ["from rally.objects import task",
-                       "import rally.objects.task"]
+        bad_imports = ["from rally.common.objects import task",
+                       "import rally.common.objects.task"]
 
         self._assert_bad_samples(checks.check_no_direct_rally_objects_import,
                                  bad_imports)
 
-        self._assert_good_samples(checks.check_no_direct_rally_objects_import,
-                                  bad_imports,
-                                  module_file="./rally/objects/__init__.py")
+        self._assert_good_samples(
+            checks.check_no_direct_rally_objects_import,
+            bad_imports,
+            module_file="./rally/common/objects/__init__.py")
 
-        good_imports = ["from rally import objects"]
+        good_imports = ["from rally.common import objects"]
         self._assert_good_samples(checks.check_no_direct_rally_objects_import,
                                   good_imports)
 
@@ -245,3 +250,72 @@ class HackingTestCase(test.TestCase):
             "a = ''   # noqa "
         ]
         self._assert_good_samples(checks.check_quotes, good_lines)
+
+    def test_check_no_constructor_data_struct(self):
+        bad_struct = [
+            "= dict()",
+            "= list()"
+        ]
+        self._assert_bad_samples(checks.check_no_constructor_data_struct,
+                                 bad_struct)
+
+        good_struct = [
+            "= []",
+            "= {}",
+        ]
+        self._assert_good_samples(checks.check_no_constructor_data_struct,
+                                  good_struct)
+
+    def test_check_dict_formatting_in_string(self):
+        bad = [
+            "\"%(a)s\" % d",
+            "\"Split across \"\n\"multiple lines: %(a)f\" % d",
+            "\"%(a)X split across \"\n\"multiple lines\" % d",
+            "\"%(a)-5.2f: Split %(\"\n\"a)#Lu stupidly\" % d",
+            "\"Comment between \"  # wtf\n\"split lines: %(a) -6.2f\" % d",
+            "\"Two strings\" + \" added: %(a)-6.2f\" % d",
+            "\"half legit (%(a)s %(b)s)\" % d + \" half bogus: %(a)s\" % d",
+            "(\"Parenthesized: %(a)s\") % d",
+            "(\"Parenthesized \"\n\"concatenation: %(a)s\") % d",
+            "(\"Parenthesized \" + \"addition: %(a)s\") % d",
+            "\"Complete %s\" % (\"foolisness: %(a)s%(a)s\" % d)",
+            "\"Modulus %(a)s\" % {\"a\": (5 % 3)}"
+        ]
+        for sample in bad:
+            sample = "print(%s)" % sample
+            tokens = tokenize.generate_tokens(
+                six.moves.StringIO(sample).readline)
+            self.assertEqual(
+                1,
+                len(list(checks.check_dict_formatting_in_string(sample,
+                                                                tokens))))
+
+        sample = "print(\"%(a)05.2lF\" % d + \" added: %(a)s\" % d)"
+        tokens = tokenize.generate_tokens(six.moves.StringIO(sample).readline)
+        self.assertEqual(
+            2,
+            len(list(checks.check_dict_formatting_in_string(sample, tokens))))
+
+        good = [
+            "\"This one is okay: %(a)s %(b)s\" % d",
+            "\"So is %(a)s\"\n\"this one: %(b)s\" % d"
+        ]
+        for sample in good:
+            sample = "print(%s)" % sample
+            tokens = tokenize.generate_tokens(
+                six.moves.StringIO(sample).readline)
+            self.assertEqual(
+                [],
+                list(checks.check_dict_formatting_in_string(sample, tokens)))
+
+    def test_check_using_unicode(self):
+
+        checkres = checks.check_using_unicode("text = unicode('sometext')",
+                                              "fakefile")
+        self.assertIsNotNone(next(checkres))
+        self.assertEqual([], list(checkres))
+
+        checkres = checks.check_using_unicode(
+            "text = process(unicode('sometext'))", "fakefile")
+        self.assertIsNotNone(next(checkres))
+        self.assertEqual([], list(checkres))

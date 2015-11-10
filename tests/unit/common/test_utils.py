@@ -13,8 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-"""Test for Rally utils."""
-
 from __future__ import print_function
 import string
 import sys
@@ -59,6 +57,15 @@ class EnumMixinTestCase(test.TestCase):
             CC = "2000"
 
         self.assertEqual(set(list(Foo())), set([10, 20, "2000"]))
+
+    def test_with_underscore(self):
+
+        class Foo(utils.EnumMixin):
+            a = 10
+            b = 20
+            _CC = "2000"
+
+        self.assertEqual(set(list(Foo())), set([10, 20]))
 
 
 class StdIOCaptureTestCase(test.TestCase):
@@ -108,31 +115,6 @@ class TimerTestCase(test.TestCase):
         self.assertEqual(timer.error[0], type(Exception()))
 
 
-class IterSubclassesTestCase(test.TestCase):
-
-    def test_itersubclasses(self):
-        class A(object):
-            pass
-
-        class B(A):
-            pass
-
-        class C(A):
-            pass
-
-        class D(C):
-            pass
-
-        self.assertEqual([B, C, D], list(utils.itersubclasses(A)))
-
-
-class ImportModulesTestCase(test.TestCase):
-    def test_try_append_module_into_sys_modules(self):
-        modules = {}
-        utils.try_append_module("rally.common.version", modules)
-        self.assertIn("rally.common.version", modules)
-
-
 class LogTestCase(test.TestCase):
 
     def test_log_task_wrapper(self):
@@ -169,51 +151,35 @@ class LogTestCase(test.TestCase):
         mock_log.assert_called_once_with("Deprecated test "
                                          "(deprecated in Rally v0.0.1)")
 
+    def test_log_deprecated_args(self):
+        mock_log = mock.MagicMock()
 
-class LoadExtraModulesTestCase(test.TestCase):
+        @utils.log_deprecated_args("Deprecated test", "0.0.1", ("z",),
+                                   mock_log, once=True)
+        def some_method(x, y, z):
+            return x + y + z
 
-    @mock.patch("rally.common.utils.imp.load_module")
-    @mock.patch("rally.common.utils.imp.find_module",
-                return_value=(mock.MagicMock(), None, None))
-    @mock.patch("rally.common.utils.os.walk", return_value=[
-        ("/somewhere", ("/subdir", ), ("plugin1.py", )),
-        ("/somewhere/subdir", ("/subsubdir", ), ("plugin2.py",
-                                                 "withoutextension")),
-        ("/somewhere/subdir/subsubdir", [], ("plugin3.py", ))])
-    @mock.patch("rally.common.utils.os.path.exists", return_value=True)
-    def test_load_plugins_successfull(self, mock_exists,
-                                      mock_oswalk, mock_find_module,
-                                      mock_load_module):
-        test_path = "/somewhere"
-        utils.load_plugins(test_path)
-        expected = [
-            mock.call("plugin1", ["/somewhere"]),
-            mock.call("plugin2", ["/somewhere/subdir"]),
-            mock.call("plugin3", ["/somewhere/subdir/subsubdir"])
-        ]
-        self.assertEqual(mock_find_module.mock_calls, expected)
-        self.assertEqual(len(mock_load_module.mock_calls), 3)
+        self.assertEqual(some_method(2, 2, z=3), 7)
+        mock_log.assert_called_once_with(
+            "Deprecated test (args `z' deprecated in Rally v0.0.1)")
 
-    @mock.patch("rally.common.utils.os")
-    def test_load_plugins_from_nonexisting_and_empty_dir(self, mock_os):
-        # test no fails for nonexisting directory
-        mock_os.path.exists.return_value = False
-        utils.load_plugins("/somewhere")
-        # test no fails for empty directory
-        mock_os.path.exists.return_value = True
-        mock_os.walk.return_value = []
-        utils.load_plugins("/somewhere")
+        mock_log.reset_mock()
+        self.assertEqual(some_method(2, 2, z=3), 7)
+        self.assertFalse(mock_log.called)
 
-    @mock.patch("rally.common.utils.imp.load_module", side_effect=Exception())
-    @mock.patch("rally.common.utils.imp.find_module")
-    @mock.patch("rally.common.utils.os.path", return_value=True)
-    @mock.patch("rally.common.utils.os.walk",
-                return_value=[("/etc/.rally/plugins", [], ("load_it.py", ))])
-    def test_load_plugins_fails(self, mock_oswalk, mock_ospath,
-                                mock_load_module, mock_find_module):
-        # test no fails if module is broken
-        # TODO(olkonami): check exception is handled correct
-        utils.load_plugins("/somwhere")
+        @utils.log_deprecated_args("Deprecated test", "0.0.1", ("z",),
+                                   mock_log, once=False)
+        def some_method(x, y, z):
+            return x + y + z
+
+        self.assertEqual(some_method(2, 2, z=3), 7)
+        mock_log.assert_called_once_with(
+            "Deprecated test (args `z' deprecated in Rally v0.0.1)")
+
+        mock_log.reset_mock()
+        self.assertEqual(some_method(2, 2, z=3), 7)
+        mock_log.assert_called_once_with(
+            "Deprecated test (args `z' deprecated in Rally v0.0.1)")
 
 
 def module_level_method():
@@ -247,71 +213,6 @@ class FirstIndexTestCase(test.TestCase):
         self.assertIsNone(utils.first_index(lst, lambda e: e == 2))
 
 
-class DocstringTestCase(test.TestCase):
-
-    def test_parse_complete_docstring(self):
-        docstring = """One-line description.
-
-Multi-
-line-
-description.
-
-:param p1: Param 1 description.
-:param p2: Param 2
-           description.
-:returns: Return value
-          description.
-"""
-
-        dct = utils.parse_docstring(docstring)
-        expected = {
-            "short_description": "One-line description.",
-            "long_description": "Multi-\nline-\ndescription.",
-            "params": [{"name": "p1", "doc": "Param 1 description."},
-                       {"name": "p2", "doc": "Param 2 description."}],
-            "returns": "Return value description."
-        }
-        self.assertEqual(dct, expected)
-
-    def test_parse_incomplete_docstring(self):
-        docstring = """One-line description.
-
-:param p1: Param 1 description.
-:param p2: Param 2
-           description.
-"""
-
-        dct = utils.parse_docstring(docstring)
-        expected = {
-            "short_description": "One-line description.",
-            "long_description": None,
-            "params": [{"name": "p1", "doc": "Param 1 description."},
-                       {"name": "p2", "doc": "Param 2 description."}],
-            "returns": None
-        }
-        self.assertEqual(dct, expected)
-
-    def test_parse_docstring_with_no_params(self):
-        docstring = """One-line description.
-
-Multi-
-line-
-description.
-
-:returns: Return value
-          description.
-"""
-
-        dct = utils.parse_docstring(docstring)
-        expected = {
-            "short_description": "One-line description.",
-            "long_description": "Multi-\nline-\ndescription.",
-            "params": [],
-            "returns": "Return value description."
-        }
-        self.assertEqual(dct, expected)
-
-
 class EditDistanceTestCase(test.TestCase):
 
     def test_distance_empty_strings(self):
@@ -338,7 +239,7 @@ class EditDistanceTestCase(test.TestCase):
 class TenantIteratorTestCase(test.TestCase):
 
     def test_iterate_per_tenant(self):
-        users = list()
+        users = []
         tenants_count = 2
         users_per_tenant = 5
         for tenant_id in range(tenants_count):
@@ -357,28 +258,28 @@ class TenantIteratorTestCase(test.TestCase):
 class RAMIntTestCase(test.TestCase):
 
     @mock.patch("rally.common.utils.multiprocessing")
-    def test__init__(self, mock_multi):
+    def test__init__(self, mock_multiprocessing):
         utils.RAMInt()
-        mock_multi.Lock.assert_called_once_with()
-        mock_multi.Value.assert_called_once_with("I", 0)
+        mock_multiprocessing.Lock.assert_called_once_with()
+        mock_multiprocessing.Value.assert_called_once_with("I", 0)
 
     @mock.patch("rally.common.utils.multiprocessing")
-    def test__int__(self, mock_multi):
-        mock_multi.Value.return_value = mock.Mock(value=42)
+    def test__int__(self, mock_multiprocessing):
+        mock_multiprocessing.Value.return_value = mock.Mock(value=42)
         self.assertEqual(int(utils.RAMInt()), 42)
 
     @mock.patch("rally.common.utils.multiprocessing")
-    def test__str__(self, mock_multi):
-        mock_multi.Value.return_value = mock.Mock(value=42)
+    def test__str__(self, mock_multiprocessing):
+        mock_multiprocessing.Value.return_value = mock.Mock(value=42)
         self.assertEqual(str(utils.RAMInt()), "42")
 
     @mock.patch("rally.common.utils.multiprocessing")
-    def test__iter__(self, mock_multi):
+    def test__iter__(self, mock_multiprocessing):
         ram_int = utils.RAMInt()
         self.assertEqual(iter(ram_int), ram_int)
 
     @mock.patch("rally.common.utils.multiprocessing")
-    def test__next__(self, mock_multi):
+    def test__next__(self, mock_multiprocessing):
         class MemInt(int):
             THRESHOLD = 5
 
@@ -386,8 +287,8 @@ class RAMIntTestCase(test.TestCase):
                 return MemInt((int(self) + i) % self.THRESHOLD)
 
         mock_lock = mock.MagicMock()
-        mock_multi.Lock.return_value = mock_lock
-        mock_multi.Value.return_value = mock.Mock(value=MemInt(0))
+        mock_multiprocessing.Lock.return_value = mock_lock
+        mock_multiprocessing.Value.return_value = mock.Mock(value=MemInt(0))
 
         ram_int = utils.RAMInt()
         self.assertEqual(int(ram_int), 0)
@@ -401,12 +302,12 @@ class RAMIntTestCase(test.TestCase):
     @mock.patch("rally.common.utils.RAMInt.__next__",
                 return_value="next_value")
     @mock.patch("rally.common.utils.multiprocessing")
-    def test_next(self, mock_multi, mock_next):
+    def test_next(self, mock_multiprocessing, mock_ram_int___next__):
         self.assertEqual(next(utils.RAMInt()), "next_value")
-        mock_next.assert_called_once_with()
+        mock_ram_int___next__.assert_called_once_with()
 
     @mock.patch("rally.common.utils.multiprocessing")
-    def test_reset(self, mock_multi):
+    def test_reset(self, mock_multiprocessing):
         ram_int = utils.RAMInt()
         self.assertRaises(TypeError, int, ram_int)
         ram_int.reset()

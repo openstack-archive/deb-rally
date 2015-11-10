@@ -5,12 +5,14 @@
 #
 
 # Print debugging output (set logging level to DEBUG instead of
-# default WARNING level). (boolean value)
+# default INFO level). (boolean value)
 #debug = false
 
-# Print more verbose output (set logging level to INFO instead of
-# default WARNING level). (boolean value)
-#verbose = false
+# If set to false, will disable INFO logging level, making WARNING the
+# default. (boolean value)
+# This option is deprecated for removal.
+# Its value may be silently ignored in the future.
+#verbose = true
 
 # The name of a logging configuration file. This file is appended to
 # any existing logging configuration files. For details about logging
@@ -39,15 +41,18 @@
 # Deprecated group/name - [DEFAULT]/logdir
 #log_dir = <None>
 
-# Use syslog for logging. Existing syslog format is DEPRECATED during
-# I, and will change in J to honor RFC5424. (boolean value)
+# Use syslog for logging. Existing syslog format is DEPRECATED and
+# will be changed later to honor RFC5424. (boolean value)
 #use_syslog = false
 
 # (Optional) Enables or disables syslog rfc5424 format for logging. If
 # enabled, prefixes the MSG part of the syslog message with APP-NAME
-# (RFC5424). The format without the APP-NAME is deprecated in I, and
-# will be removed in J. (boolean value)
-#use_syslog_rfc_format = false
+# (RFC5424). The format without the APP-NAME is deprecated in Kilo,
+# and will be removed in Mitaka, along with this option. (boolean
+# value)
+# This option is deprecated for removal.
+# Its value may be silently ignored in the future.
+#use_syslog_rfc_format = true
 
 # Syslog facility to receive log lines. (string value)
 #syslog_log_facility = LOG_USER
@@ -67,16 +72,13 @@
 
 # Prefix each line of exception output with this format. (string
 # value)
-#logging_exception_prefix = %(asctime)s.%(msecs)03d %(process)d TRACE %(name)s %(instance)s
+#logging_exception_prefix = %(asctime)s.%(msecs)03d %(process)d ERROR %(name)s %(instance)s
 
 # List of logger=LEVEL pairs. (list value)
-#default_log_levels = amqp=WARN,amqplib=WARN,boto=WARN,qpid=WARN,sqlalchemy=WARN,suds=INFO,oslo.messaging=INFO,iso8601=WARN,requests.packages.urllib3.connectionpool=WARN,urllib3.connectionpool=WARN,websocket=WARN,keystonemiddleware=WARN,routes.middleware=WARN,stevedore=WARN
+#default_log_levels = amqp=WARN,amqplib=WARN,boto=WARN,qpid=WARN,sqlalchemy=WARN,suds=INFO,oslo.messaging=INFO,iso8601=WARN,requests.packages.urllib3.connectionpool=WARN,urllib3.connectionpool=WARN,websocket=WARN,requests.packages.urllib3.util.retry=WARN,urllib3.util.retry=WARN,keystonemiddleware=WARN,routes.middleware=WARN,stevedore=WARN,taskflow=WARN
 
 # Enables or disables publication of error events. (boolean value)
 #publish_errors = false
-
-# Enables or disables fatal status of deprecations. (boolean value)
-#fatal_deprecations = false
 
 # The format for an instance that is passed with the log message.
 # (string value)
@@ -86,6 +88,9 @@
 # (string value)
 #instance_uuid_format = "[instance: %(uuid)s] "
 
+# Enables or disables fatal status of deprecations. (boolean value)
+#fatal_deprecations = false
+
 #
 # From rally
 #
@@ -94,17 +99,18 @@
 # quiet. (boolean value)
 #rally_debug = false
 
-# make exception message format errors fatal (boolean value)
-#fatal_exception_format_errors = false
-
 # HTTP timeout for any of OpenStack service in seconds (floating point
 # value)
 #openstack_client_http_timeout = 180.0
 
 # Use SSL for all OpenStack API interfaces (boolean value)
+# This option is deprecated for removal.
+# Its value may be silently ignored in the future.
 #https_insecure = false
 
-# Path to CA server cetrificate for SSL (string value)
+# Path to CA server certificate for SSL (string value)
+# This option is deprecated for removal.
+# Its value may be silently ignored in the future.
 #https_cacert = <None>
 
 
@@ -132,6 +138,16 @@
 # point value)
 #cinder_volume_delete_poll_interval = 2.0
 
+# Time to sleep after boot before polling for status (floating point
+# value)
+#ec2_server_boot_prepoll_delay = 1.0
+
+# Server boot timeout (floating point value)
+#ec2_server_boot_timeout = 300.0
+
+# Server boot poll interval (floating point value)
+#ec2_server_boot_poll_interval = 1.0
+
 # Time to sleep after creating a resource before polling for it status
 # (floating point value)
 #glance_image_create_prepoll_delay = 2.0
@@ -150,26 +166,35 @@
 # point value)
 #glance_image_delete_poll_interval = 1.0
 
-# Time(in sec) to sleep after creating a resource before polling for it status.
-# (floating point value)
+# Time(in sec) to sleep after creating a resource before polling for
+# it status. (floating point value)
 #heat_stack_create_prepoll_delay = 2.0
 
-# Time(in sec) to wait for heat stack to be created. (floating point value)
+# Time(in sec) to wait for heat stack to be created. (floating point
+# value)
 #heat_stack_create_timeout = 3600.0
 
-# Time interval(in sec) between checks when waiting for stack creation.
-# (floating point value)
+# Time interval(in sec) between checks when waiting for stack
+# creation. (floating point value)
 #heat_stack_create_poll_interval = 1.0
 
-# Time(in sec) to wait for heat stack to be deleted. (floating point value)
+# Time(in sec) to wait for heat stack to be deleted. (floating point
+# value)
 #heat_stack_delete_timeout = 3600.0
 
-# Time interval(in sec) between checks when waiting for stack deletion.
-# (floating point value)
+# Time interval(in sec) between checks when waiting for stack
+# deletion. (floating point value)
 #heat_stack_delete_poll_interval = 1.0
 
-# Time(in sec) to sleep after updating a resource before polling for it status.
-# (floating point value)
+# Time(in sec) to wait for stack to be checked. (floating point value)
+#heat_stack_check_timeout = 3600.0
+
+# Time interval(in sec) between checks when waiting for stack
+# checking. (floating point value)
+#heat_stack_check_poll_interval = 1.0
+
+# Time(in sec) to sleep after updating a resource before polling for
+# it status. (floating point value)
 #heat_stack_update_prepoll_delay = 2.0
 
 # Time(in sec) to wait for stack to be updated. (floating point value)
@@ -179,7 +204,8 @@
 # (floating point value)
 #heat_stack_update_poll_interval = 1.0
 
-# Time(in sec) to wait for stack to be suspended. (floating point value)
+# Time(in sec) to wait for stack to be suspended. (floating point
+# value)
 #heat_stack_suspend_timeout = 3600.0
 
 # Time interval(in sec) between checks when waiting for stack suspend.
@@ -193,12 +219,67 @@
 # (floating point value)
 #heat_stack_resume_poll_interval = 1.0
 
-# Time(in sec) to wait for stack to be checked. (floating point value)
-#heat_stack_check_timeout = 3600.0
+# Time(in sec) to wait for stack snapshot to be created. (floating
+# point value)
+#heat_stack_snapshot_timeout = 3600.0
 
-# Time interval(in sec) between checks when waiting for stack checking.
+# Time interval(in sec) between checks when waiting for stack snapshot
+# to be created. (floating point value)
+#heat_stack_snapshot_poll_interval = 1.0
+
+# Time(in sec) to wait for stack to be restored from snapshot.
 # (floating point value)
-#heat_stack_check_poll_interval = 1.0
+#heat_stack_restore_timeout = 3600.0
+
+# Time interval(in sec) between checks when waiting for stack to be
+# restored. (floating point value)
+#heat_stack_restore_poll_interval = 1.0
+
+# Time (in sec) to wait for stack to scale up or down. (floating point
+# value)
+#heat_stack_scale_timeout = 3600.0
+
+# Time interval (in sec) between checks when waiting for a stack to
+# scale up or down. (floating point value)
+#heat_stack_scale_poll_interval = 1.0
+
+# Interval(in sec) between checks when waiting for node creation.
+# (floating point value)
+#ironic_node_create_poll_interval = 1.0
+
+# Delay between creating Manila share and polling for its status.
+# (floating point value)
+#manila_share_create_prepoll_delay = 2.0
+
+# Timeout for Manila share creation. (floating point value)
+#manila_share_create_timeout = 300.0
+
+# Interval between checks when waiting for Manila share creation.
+# (floating point value)
+#manila_share_create_poll_interval = 3.0
+
+# Timeout for Manila share deletion. (floating point value)
+#manila_share_delete_timeout = 180.0
+
+# Interval between checks when waiting for Manila share deletion.
+# (floating point value)
+#manila_share_delete_poll_interval = 2.0
+
+# A timeout in seconds for an environment delete (integer value)
+# Deprecated group/name - [DEFAULT]/delete_environment_timeout
+#murano_delete_environment_timeout = 180
+
+# A timeout in seconds for an environment deploy (integer value)
+# Deprecated group/name - [DEFAULT]/deploy_environment_timeout
+#murano_deploy_environment_timeout = 1200
+
+# Delete environment check interval in seconds (integer value)
+# Deprecated group/name - [DEFAULT]/delete_environment_check_interval
+#murano_delete_environment_check_interval = 2
+
+# Deploy environment check interval in seconds (integer value)
+# Deprecated group/name - [DEFAULT]/deploy_environment_check_interval
+#murano_deploy_environment_check_interval = 5
 
 # Time to sleep after start before polling for status (floating point
 # value)
@@ -250,9 +331,9 @@
 # Server reboot poll interval (floating point value)
 #nova_server_reboot_poll_interval = 2.0
 
-# Time to sleep after rebuild before polling for status (floating point
-# value)
-#nova_server_rebuild_prepoll_delay = 0.0
+# Time to sleep after rebuild before polling for status (floating
+# point value)
+#nova_server_rebuild_prepoll_delay = 1.0
 
 # Server rebuild timeout (floating point value)
 #nova_server_rebuild_timeout = 300.0
@@ -290,8 +371,8 @@
 # Server suspend poll interval (floating point value)
 #nova_server_suspend_poll_interval = 2.0
 
-# Time to sleep after resume before polling for status (floating
-# point value)
+# Time to sleep after resume before polling for status (floating point
+# value)
 #nova_server_resume_prepoll_delay = 2.0
 
 # Server resume timeout (floating point value)
@@ -300,8 +381,8 @@
 # Server resume poll interval (floating point value)
 #nova_server_resume_poll_interval = 2.0
 
-# Time to sleep after pause before polling for status (floating
-# point value)
+# Time to sleep after pause before polling for status (floating point
+# value)
 #nova_server_pause_prepoll_delay = 2.0
 
 # Server pause timeout (floating point value)
@@ -319,6 +400,26 @@
 
 # Server unpause poll interval (floating point value)
 #nova_server_unpause_poll_interval = 2.0
+
+# Time to sleep after shelve before polling for status (floating point
+# value)
+#nova_server_shelve_prepoll_delay = 2.0
+
+# Server shelve timeout (floating point value)
+#nova_server_shelve_timeout = 300.0
+
+# Server shelve poll interval (floating point value)
+#nova_server_shelve_poll_interval = 2.0
+
+# Time to sleep after unshelve before polling for status (floating
+# point value)
+#nova_server_unshelve_prepoll_delay = 2.0
+
+# Server unshelve timeout (floating point value)
+#nova_server_unshelve_timeout = 300.0
+
+# Server unshelve poll interval (floating point value)
+#nova_server_unshelve_poll_interval = 2.0
 
 # Time to sleep after image_create before polling for status (floating
 # point value)
@@ -390,30 +491,48 @@
 # Server migrate poll interval (floating point value)
 #nova_server_migrate_poll_interval = 2.0
 
+# Nova volume detach timeout (floating point value)
+#nova_detach_volume_timeout = 200.0
+
+# Nova volume detach poll interval (floating point value)
+#nova_detach_volume_poll_interval = 2.0
+
 # A timeout in seconds for a cluster create operation (integer value)
-#cluster_create_timeout = 1800
+# Deprecated group/name - [DEFAULT]/cluster_create_timeout
+#sahara_cluster_create_timeout = 1800
 
 # A timeout in seconds for a cluster delete operation (integer value)
-#cluster_delete_timeout = 900
+# Deprecated group/name - [DEFAULT]/cluster_delete_timeout
+#sahara_cluster_delete_timeout = 900
 
 # Cluster status polling interval in seconds (integer value)
-#cluster_check_interval = 5
+# Deprecated group/name - [DEFAULT]/cluster_check_interval
+#sahara_cluster_check_interval = 5
 
-# A timeout in seconds for a cluster create operation (integer value)
-#job_execution_timeout = 600
+# A timeout in seconds for a Job Execution to complete (integer value)
+# Deprecated group/name - [DEFAULT]/job_execution_timeout
+#sahara_job_execution_timeout = 600
 
-# Cluster status polling interval in seconds (integer value)
-#job_check_interval = 5
+# Job Execution status polling interval in seconds (integer value)
+# Deprecated group/name - [DEFAULT]/job_check_interval
+#sahara_job_check_interval = 5
 
-# Time to sleep after boot before polling for status (floating point
-# value)
-#ec2_server_boot_prepoll_delay = 1.0
+# Interval between checks when waiting for a VM to become pingable
+# (floating point value)
+#vm_ping_poll_interval = 1.0
 
-# Server boot timeout (floating point value)
-#ec2_server_boot_timeout = 300.0
+# Time to wait for a VM to become pingable (floating point value)
+#vm_ping_timeout = 120.0
 
-# Server boot poll interval (floating point value)
-#ec2_server_boot_poll_interval = 1.0
+
+[cleanup]
+
+#
+# From rally
+#
+
+# A timeout in seconds for deleting resources (integer value)
+#resource_deletion_timeout = 600
 
 
 [database]
@@ -528,11 +647,29 @@
 # From rally
 #
 
-# Version of cirros image (string value)
-#cirros_version = 0.3.2
+# CirrOS image URL (string value)
+#cirros_img_url = http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img
 
-# Cirros image name (string value)
-#cirros_image = cirros-0.3.2-x86_64-disk.img
+
+[role]
+
+#
+# From rally
+#
+
+# Role required for users to be able to create Swift containers
+# (string value)
+#swift_operator_role = Member
+
+# User role that has reseller admin (string value)
+#swift_reseller_admin_role = ResellerAdmin
+
+# Role required for users to be able to manage Heat stacks (string
+# value)
+#heat_stack_owner_role = heat_stack_owner
+
+# Role for Heat template-defined users (string value)
+#heat_stack_user_role = heat_stack_user
 
 
 [users_context]

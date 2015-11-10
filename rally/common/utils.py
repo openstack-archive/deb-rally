@@ -14,21 +14,15 @@
 #    under the License.
 
 import functools
-import imp
 import inspect
 import multiprocessing
-import os
 import random
-import re
 import string
 import sys
 import time
 
-from oslo_utils import importutils
 from six import moves
-from sphinx.util import docstrings
 
-import rally
 from rally.common.i18n import _
 from rally.common import log as logging
 from rally import exceptions
@@ -139,46 +133,6 @@ class RAMInt(object):
             self.__int.value = 0
 
 
-def itersubclasses(cls, _seen=None):
-    """Generator over all subclasses of a given class in depth first order."""
-
-    if not isinstance(cls, type):
-        raise TypeError(_("itersubclasses must be called with "
-                          "new-style classes, not %.100r") % cls)
-    _seen = _seen or set()
-    try:
-        subs = cls.__subclasses__()
-    except TypeError:   # fails only when cls is type
-        subs = cls.__subclasses__(cls)
-    for sub in subs:
-        if sub not in _seen:
-            _seen.add(sub)
-            yield sub
-            for sub in itersubclasses(sub, _seen):
-                yield sub
-
-
-def try_append_module(name, modules):
-    if name not in modules:
-        modules[name] = importutils.import_module(name)
-
-
-def import_modules_from_package(package):
-    """Import modules from package and append into sys.modules
-
-    :param: package - Full package name. For example: rally.deploy.engines
-    """
-    path = [os.path.dirname(rally.__file__), ".."] + package.split(".")
-    path = os.path.join(*path)
-    for root, dirs, files in os.walk(path):
-        for filename in files:
-            if filename.startswith("__") or not filename.endswith(".py"):
-                continue
-            new_package = ".".join(root.split(os.sep)).split("....")[1]
-            module_name = "%s.%s" % (new_package, filename[:-3])
-            try_append_module(module_name, sys.modules)
-
-
 def _log_wrapper(obj, log_function, msg, **kw):
     """A logging wrapper for any method of a class.
 
@@ -224,7 +178,7 @@ def log_verification_wrapper(log_function, msg, **kw):
 
 
 def log_deprecated(message, rally_version, log_function=None):
-    """A wrapper marking a certain method as decrecated.
+    """A wrapper marking a certain method as deprecated.
 
     :param message: Message that describes why the method was deprecated
     :param rally_version: version of Rally when the method was deprecated
@@ -243,27 +197,35 @@ def log_deprecated(message, rally_version, log_function=None):
     return decorator
 
 
-def load_plugins(directory):
-    if os.path.exists(directory):
-        LOG.info("Loading plugins from directories %s/*" % directory)
+def log_deprecated_args(message, rally_version, deprecated_args,
+                        log_function=None, once=False):
+    """A wrapper marking certain arguments as deprecated.
 
-        to_load = []
-        for root, dirs, files in os.walk(directory):
-            to_load.extend((plugin[:-3], root)
-                           for plugin in files if plugin.endswith(".py"))
-        for plugin, directory in to_load:
-            fullpath = os.path.join(directory, plugin)
-            try:
-                fp, pathname, descr = imp.find_module(plugin, [directory])
-                imp.load_module(plugin, fp, pathname, descr)
-                fp.close()
-                LOG.info("\t Loaded module with plugins: %s.py" % fullpath)
-            except Exception as e:
-                LOG.warning(
-                    "\t Failed to load module with plugins %(path)s.py: %(e)s"
-                    % {"path": fullpath, "e": e})
-                if logging.is_debug():
-                    LOG.exception(e)
+    :param message: Message that describes why the arguments were deprecated
+    :param rally_version: version of Rally when the arguments were deprecated
+    :param deprecated_args: List of deprecated args.
+    :param log_function: Logging method to be used, e.g. LOG.info
+    :param once: Show only once (default is each)
+    """
+    log_function = log_function or LOG.warning
+
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            if (not once) or (not getattr(f, "_warned_dep_args", False)):
+                deprecated = ", ".join([
+                    "`%s'" % x for x in deprecated_args if x in kwargs])
+                if deprecated:
+                    log_function(
+                        "%(msg)s (args %(args)s deprecated in Rally "
+                        "v%(version)s)" %
+                        {"msg": message, "version": rally_version,
+                         "args": deprecated})
+                    setattr(f, "_warned_dep_args", once)
+            result = f(*args, **kwargs)
+            return result
+        return wrapper
+    return decorator
 
 
 def get_method_class(func):
@@ -300,97 +262,6 @@ def first_index(lst, predicate):
         if predicate(lst[i]):
             return i
     return None
-
-
-def format_docstring(docstring):
-    """Format the docstring to make it well-readable.
-
-    :param docstring: string.
-    :returns: formatted string.
-    """
-    if docstring:
-        return "\n".join(docstrings.prepare_docstring(docstring))
-    else:
-        return ""
-
-
-def parse_docstring(docstring):
-    """Parse the docstring into its components.
-
-    :returns: a dictionary of form
-              {
-                  "short_description": ...,
-                  "long_description": ...,
-                  "params": [{"name": ..., "doc": ...}, ...],
-                  "returns": ...
-              }
-    """
-
-    if docstring:
-        lines = docstrings.prepare_docstring(docstring)
-        lines = [line for line in lines if line]
-    else:
-        lines = []
-
-    if lines:
-        short_description = lines[0]
-
-        param_start = first_index(lines, lambda l: l.startswith(":param"))
-        returns_start = first_index(lines, lambda l: l.startswith(":returns"))
-        if param_start or returns_start:
-            description_end = param_start or returns_start
-            long_description = "\n".join(lines[1:description_end])
-        else:
-            long_description = "\n".join(lines[1:])
-
-        if not long_description:
-            long_description = None
-
-        param_lines = []
-        if param_start:
-            current_line = lines[param_start]
-            current_line_index = param_start + 1
-            while current_line_index < (returns_start or len(lines)):
-                if lines[current_line_index].startswith(":param"):
-                    param_lines.append(current_line)
-                    current_line = lines[current_line_index]
-                else:
-                    continuation_line = lines[current_line_index].strip()
-                    current_line += " " + continuation_line
-                current_line_index += 1
-            param_lines.append(current_line)
-        params = []
-        param_regex = re.compile("^:param (?P<name>\w+): (?P<doc>.*)$")
-        for param_line in param_lines:
-            match = param_regex.match(param_line)
-            if match:
-                params.append({
-                    "name": match.group("name"),
-                    "doc": match.group("doc")
-                })
-
-        returns = None
-        if returns_start:
-            returns_line = " ".join([l.strip() for l in lines[returns_start:]])
-            returns_regex = re.compile("^:returns: (?P<doc>.*)$")
-            match = returns_regex.match(returns_line)
-            if match:
-                returns = match.group("doc")
-
-        return {
-            "short_description": short_description,
-            "long_description": long_description,
-            "params": params,
-            "returns": returns
-        }
-
-    else:
-        return {
-            "short_description": None,
-            "long_description": None,
-            "params": [],
-            "returns": None
-        }
 
 
 def distance(s1, s2):
@@ -444,8 +315,14 @@ def iterate_per_tenants(users):
             processed_tenants.add(user["tenant_id"])
             yield (user, user["tenant_id"])
 
+# NOTE(andreykurilin): Actually, this variable should be named as
+# "_ASCII_LETTERS_AND_DIGITS", but since world is not ideal, name of variable
+# can be non-ideal too.
+_DIGITS_AND_ASCII_LETTERS = string.ascii_letters + string.digits
 
-def generate_random_name(prefix="", length=16, choice=string.ascii_lowercase):
+
+def generate_random_name(prefix="", length=16,
+                         choice=_DIGITS_AND_ASCII_LETTERS):
     """Generates pseudo random name.
 
     :param prefix: str, custom prefix for random name
@@ -453,5 +330,6 @@ def generate_random_name(prefix="", length=16, choice=string.ascii_lowercase):
     :param choice: str, chars for random choice
     :returns: str, pseudo random name
     """
+
     rand_part = "".join(random.choice(choice) for i in range(length))
     return prefix + rand_part

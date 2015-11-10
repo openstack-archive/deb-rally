@@ -1,12 +1,13 @@
+{% set flavor_name = flavor_name or "m1.tiny" %}
 ---
 NovaServers.boot_and_rebuild_server:
 - args:
     flavor:
-      name: m1.nano
+      name: "{{flavor_name}}"
     from_image:
-      name: "cirros-0.3.1-x86_64-uec"
+      name: "^cirros.*uec$"
     to_image:
-      name: "cirros-0.3.2-x86_64-uec"
+      name: "^cirros.*uec$"
   runner:
     type: constant
     times: 5

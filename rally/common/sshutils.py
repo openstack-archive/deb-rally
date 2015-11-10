@@ -57,6 +57,7 @@ Eventlet:
 
 """
 
+import os
 import select
 import socket
 import time
@@ -126,9 +127,13 @@ class SSH(object):
             return self._client
         except Exception as e:
             message = _("Exception %(exception_type)s was raised "
-                        "during connect. Exception value is: %(exception)r")
+                        "during connect to %(user)s@%(host)s:%(port)s. "
+                        "Exception value is: %(exception)r")
             self._client = False
             raise SSHError(message % {"exception": e,
+                                      "user": self.user,
+                                      "host": self.host,
+                                      "port": self.port,
                                       "exception_type": type(e)})
 
     def close(self):
@@ -160,6 +165,9 @@ class SSH(object):
 
     def _run(self, client, cmd, stdin=None, stdout=None, stderr=None,
              raise_on_error=True, timeout=3600):
+
+        if isinstance(cmd, (list, tuple)):
+            cmd = " ".join(six.moves.shlex_quote(str(p)) for p in cmd)
 
         transport = client.get_transport()
         session = transport.open_session()
@@ -229,7 +237,7 @@ class SSH(object):
     def execute(self, cmd, stdin=None, timeout=3600):
         """Execute the specified command on the server.
 
-        :param cmd:     Command to be executed.
+        :param cmd:     Command to be executed, can be a list.
         :param stdin:   Open file to be sent on process stdin.
         :param timeout: Timeout for execution of the command.
 
@@ -256,3 +264,34 @@ class SSH(object):
                 time.sleep(interval)
             if time.time() > (start_time + timeout):
                 raise SSHTimeout(_("Timeout waiting for '%s'") % self.host)
+
+    def _put_file_sftp(self, localpath, remotepath, mode=None):
+        client = self._get_client()
+
+        with client.open_sftp() as sftp:
+            sftp.put(localpath, remotepath)
+            if mode is None:
+                mode = 0o777 & os.stat(localpath).st_mode
+            sftp.chmod(remotepath, mode)
+
+    def _put_file_shell(self, localpath, remotepath, mode=None):
+        cmd = ["cat > %s" % remotepath]
+        if mode is not None:
+            cmd.append("chmod 0%o %s" % (mode, remotepath))
+
+        with open(localpath, "rb") as localfile:
+            cmd = "; ".join(cmd)
+            self.run(cmd, stdin=localfile)
+
+    def put_file(self, localpath, remotepath, mode=None):
+        """Copy specified local file to the server.
+
+        :param localpath:   Local filename.
+        :param remotepath:  Remote filename.
+        :param mode:        Permissions to set after upload
+        """
+
+        try:
+            self._put_file_sftp(localpath, remotepath, mode=mode)
+        except paramiko.SSHException:
+            self._put_file_shell(localpath, remotepath, mode=mode)

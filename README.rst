@@ -21,6 +21,13 @@ The OpenStack QA team mostly works on CI/CD that ensures that new patches don't 
    :alt: Rally Architecture
 
 
+Who Is Using Rally
+==================
+
+.. image:: doc/source/images/Rally_who_is_using.png
+   :alt: Who is Using Rally
+
+
 Documentation
 =============
 
@@ -78,6 +85,10 @@ Launchpad page:
 
     https://launchpad.net/rally
 
-Code is hosted on github:
+Code is hosted on git.openstack.org:
 
-    https://github.com/stackforge/rally
+    http://git.openstack.org/cgit/openstack/rally
+
+Code is mirrored on github:
+
+    https://github.com/openstack/rally

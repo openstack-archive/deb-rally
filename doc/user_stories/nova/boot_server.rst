@@ -39,7 +39,7 @@ Cluster
 This cluster was created via Fuel Dashboard interface.
 
 +----------------------+-----------------------------------------------------------------------------+
-| Deployment           | Custom build of `Mirantis OpenStack <https://software.mirantis.com/>`_  v5.1 |
+| Deployment           | Custom build of `Mirantis OpenStack <https://software.mirantis.com/>`_ v5.1 |
 +----------------------+-----------------------------------------------------------------------------+
 | OpenStack release    | Icehouse                                                                    |
 +----------------------+-----------------------------------------------------------------------------+
@@ -67,9 +67,11 @@ https://review.openstack.org/#/c/96300/
 
 **Deployment**
 
-Rally was deployed for cluster using `ExistingCloud <https://github.com/stackforge/rally/blob/master/samples/deployments/existing.json>`_ type of deployment.
+Rally was deployed for cluster using `ExistingCloud <https://github.com/openstack/rally/blob/master/samples/deployments/existing.json>`_ type of deployment.
 
-**Server flavor** ::
+**Server flavor**
+
+.. code-block:: console
 
  $ nova flavor-show ram64
  +----------------------------+--------------------------------------+
@@ -88,7 +90,9 @@ Rally was deployed for cluster using `ExistingCloud <https://github.com/stackfor
  | vcpus                      | 1                                    |
  +----------------------------+--------------------------------------+
 
-**Server image** ::
+**Server image**
+
+.. code-block:: console
 
  $ nova image-show TestVM
  +----------------------------+-------------------------------------------------+
@@ -107,7 +111,9 @@ Rally was deployed for cluster using `ExistingCloud <https://github.com/stackfor
  +----------------------------+-------------------------------------------------+
 
 
-**Task configuration file (in JSON format):** ::
+**Task configuration file (in JSON format):**
+
+.. code-block:: json
 
  {
     "NovaServers.boot_server": [

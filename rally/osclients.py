@@ -19,9 +19,9 @@ from oslo_config import cfg
 
 from rally.common.i18n import _
 from rally.common import log as logging
+from rally.common import objects
 from rally import consts
 from rally import exceptions
-from rally import objects
 
 
 CONF = cfg.CONF
@@ -33,7 +33,7 @@ OSCLIENTS_OPTS = [
                 help="Use SSL for all OpenStack API interfaces",
                 deprecated_for_removal=True),
     cfg.StrOpt("https_cacert", default=None,
-               help="Path to CA server cetrificate for SSL",
+               help="Path to CA server certificate for SSL",
                deprecated_for_removal=True)
 ]
 CONF.register_opts(OSCLIENTS_OPTS)
@@ -46,10 +46,8 @@ def cached(func):
         key = "{0}{1}{2}".format(func.__name__,
                                  str(args) if args else "",
                                  str(kwargs) if kwargs else "")
-
-        if key in self.cache:
-            return self.cache[key]
-        self.cache[key] = func(self, *args, **kwargs)
+        if key not in self.cache:
+            self.cache[key] = func(self, *args, **kwargs)
         return self.cache[key]
 
     return wrapper
@@ -134,12 +132,13 @@ class Clients(object):
 
     def _get_auth_info(self, user_key="username",
                        password_key="password",
+                       auth_url_key="auth_url",
                        project_name_key="project_id"
                        ):
         kw = {
             user_key: self.endpoint.username,
             password_key: self.endpoint.password,
-            "auth_url": self.endpoint.auth_url
+            auth_url_key: self.endpoint.auth_url
         }
         if project_name_key:
             kw.update({project_name_key: self.endpoint.tenant_name})
@@ -239,6 +238,27 @@ class Clients(object):
         return client
 
     @cached
+    def manila(self, version="1"):
+        """Return manila client."""
+        from manilaclient import client as manila
+        manila_client = manila.Client(
+            version,
+            region_name=self.endpoint.region_name,
+            http_log_debug=logging.is_debug(),
+            timeout=CONF.openstack_client_http_timeout,
+            insecure=self.endpoint.insecure,
+            cacert=self.endpoint.cacert,
+            **self._get_auth_info(password_key="api_key",
+                                  project_name_key="project_name"))
+        kc = self.keystone()
+        manila_client.client.management_url = kc.service_catalog.url_for(
+            service_type="share",
+            endpoint_type=self.endpoint.endpoint_type,
+            region_name=self.endpoint.region_name)
+        manila_client.client.auth_token = kc.auth_token
+        return manila_client
+
+    @cached
     def ceilometer(self, version="2"):
         """Return ceilometer client."""
         from ceilometerclient import client as ceilometer
@@ -253,17 +273,17 @@ class Clients(object):
             auth_token = lambda: kc.auth_token
 
         client = ceilometer.get_client(
-                    version,
-                    os_endpoint=metering_api_url,
-                    token=auth_token,
-                    timeout=CONF.openstack_client_http_timeout,
-                    insecure=self.endpoint.insecure,
-                    cacert=self.endpoint.cacert,
-                    **self._get_auth_info(project_name_key="tenant_name"))
+            version,
+            os_endpoint=metering_api_url,
+            token=auth_token,
+            timeout=CONF.openstack_client_http_timeout,
+            insecure=self.endpoint.insecure,
+            cacert=self.endpoint.cacert,
+            **self._get_auth_info(project_name_key="tenant_name"))
         return client
 
     @cached
-    def ironic(self, version="1.0"):
+    def ironic(self, version="1"):
         """Return Ironic client."""
         from ironicclient import client as ironic
         kc = self.keystone()
@@ -389,6 +409,7 @@ class Clients(object):
                                   **self._get_auth_info(
                                       user_key="user",
                                       password_key="key",
+                                      auth_url_key="authurl",
                                       project_name_key="tenant_name")
                                   )
         return client
@@ -427,3 +448,34 @@ class Clients(object):
             if service_type in consts.ServiceType:
                 services_data[service_type] = consts.ServiceType[service_type]
         return services_data
+
+    @classmethod
+    def register(cls, client_name):
+        """Decorator that adds new OpenStack client dynamically.
+
+        :param client_name: str name how client will be named in Rally clients
+
+        Decorated function will be added to Clients in runtime, so its sole
+        argument is a Clients instance.
+
+        Example:
+          >>> from rally import osclients
+          >>> @osclients.Clients.register("supernova")
+          ... def another_nova_client(self):
+          ...   from novaclient import client as nova
+          ...   return nova.Client("2", auth_token=self.keystone().auth_token,
+          ...                      **self._get_auth_info(password_key="key"))
+          ...
+          >>> clients = osclients.Clients.create_from_env()
+          >>> clients.supernova().services.list()[:2]
+          [<Service: nova-conductor>, <Service: nova-cert>]
+        """
+        def wrap(client_func):
+            if hasattr(cls, client_name):
+                raise ValueError(
+                    _("Can not register client: name already exists: %s")
+                    % client_name)
+            setattr(cls, client_name, cached(client_func))
+            return client_func
+
+        return wrap

@@ -13,24 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-
-import sys
-
-from oslo_config import cfg
+import six
 
 from rally.common.i18n import _
 from rally.common import log as logging
 
 LOG = logging.getLogger(__name__)
-
-EXC_LOG_OPTS = [
-    cfg.BoolOpt("fatal_exception_format_errors",
-                default=False,
-                help="make exception message format errors fatal"),
-]
-
-CONF = cfg.CONF
-CONF.register_opts(EXC_LOG_OPTS)
 
 
 class RallyException(Exception):
@@ -46,37 +34,13 @@ class RallyException(Exception):
     def __init__(self, message=None, **kwargs):
         self.kwargs = kwargs
 
-        if "code" not in self.kwargs:
-            try:
-                self.kwargs["code"] = self.code
-            except AttributeError:
-                pass
-
         if "%(message)s" in self.msg_fmt:
             kwargs.update({"message": message})
 
-        try:
-            message = self.msg_fmt % kwargs
-        except KeyError:
-            exc_info = sys.exc_info()
-            # kwargs doesn't match a variable in the message
-            # log the issue and the kwargs
-            msg = "kwargs don't match in string format operation: %s"
-            LOG.debug(msg % kwargs, exc_info=exc_info)
-
-            if CONF.fatal_exception_format_errors:
-                raise exc_info[0].with_traceback(exc_info[2])
-            else:
-                # at least get the core message out if something happened
-                message = message or self.msg_fmt
-
-        super(RallyException, self).__init__(message)
+        super(RallyException, self).__init__(self.msg_fmt % kwargs)
 
     def format_message(self):
-        if self.__class__.__name__.endswith("_Remote"):
-            return self.args[0]
-        else:
-            return unicode(self)
+        return six.text_type(self)
 
 
 class ImmutableException(RallyException):
@@ -97,7 +61,7 @@ class InvalidRunnerResult(RallyException):
 
 
 class InvalidTaskException(InvalidConfigException):
-    msg_fmt = _("This config is invalid: `%(message)s`")
+    msg_fmt = _("Task config is invalid: `%(message)s`")
 
 
 class NotFoundScenarios(InvalidTaskException):
@@ -115,32 +79,14 @@ class NotFoundException(RallyException):
     msg_fmt = _("Not found.")
 
 
-class NoSuchPlugin(NotFoundException):
-    msg_fmt = _("There is no plugin with name: `%(name)s`.")
+class PluginNotFound(NotFoundException):
+    msg_fmt = _("There is no plugin with name: %(name)s in "
+                "%(namespace)s namespace.")
 
 
-class NoSuchEngine(NotFoundException):
-    msg_fmt = _("There is no engine with name `%(engine_name)s`.")
-
-
-class NoSuchVMProvider(NotFoundException):
-    msg_fmt = _("There is no vm provider with name `%(vm_provider_name)s`.")
-
-
-class NoSuchScenario(NotFoundException):
-    msg_fmt = _("There is no benchmark scenario with name `%(name)s`.")
-
-
-class NoSuchRunner(NotFoundException):
-    msg_fmt = _("There is no benchmark runner with type `%(type)s`.")
-
-
-class NoSuchContext(NotFoundException):
-    msg_fmt = _("There is no benchmark context with name `%(name)s`.")
-
-
-class NoSuchSLA(NotFoundException):
-    msg_fmt = _("There is no SLA with name `%(name)s`.")
+class PluginWithSuchNameExists(RallyException):
+    msg_fmt = _("Plugin with such name: %(name)s already exists in "
+                "%(namespace)s namespace")
 
 
 class NoSuchConfigField(NotFoundException):
@@ -168,6 +114,10 @@ class DeploymentIsBusy(RallyException):
                 "uuid=%(uuid)s.")
 
 
+class RallyAssertionError(RallyException):
+    msg_fmt = _("Assertion error: %(message)s")
+
+
 class ResourceNotFound(NotFoundException):
     msg_fmt = _("Resource with id=%(id)s not found.")
 
@@ -187,7 +137,8 @@ class GetResourceNotFound(GetResourceFailure):
 
 
 class GetResourceErrorStatus(GetResourceFailure):
-    msg_fmt = _("Resource %(resource)s has %(status)s status: %(fault)s")
+    msg_fmt = _("Resource %(resource)s has %(status)s status.\n"
+                "Fault: %(fault)s")
 
 
 class ScriptError(RallyException):
@@ -280,3 +231,11 @@ class InvalidHostException(RallyException):
 
 class MultipleMatchesFound(RallyException):
     msg_fmt = _("Found multiple %(needle)s: %(haystack)s")
+
+
+class TempestConfigCreationFailure(RallyException):
+    msg_fmt = _("Unable to create Tempest config file: %(message)s")
+
+
+class TempestResourceCreationFailure(RallyException):
+    msg_fmt = _("Unable to create resource needed for Tempest: %(message)s")

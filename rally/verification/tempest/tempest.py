@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 from oslo_serialization import jsonutils
 from oslo_utils import encodeutils
@@ -59,7 +60,7 @@ class Tempest(object):
                                  ".rally/tempest/base")
 
     def __init__(self, deployment, verification=None, tempest_config=None,
-                 source=None):
+                 source=None, system_wide_install=False):
         self.tempest_source = source or TEMPEST_SOURCE
         self.deployment = deployment
         self._path = os.path.join(os.path.expanduser("~"),
@@ -67,10 +68,10 @@ class Tempest(object):
                                   "for-deployment-%s" % deployment)
         self.config_file = tempest_config or self.path("tempest.conf")
         self.log_file_raw = self.path("subunit.stream")
-        self.venv_wrapper = self.path("tools/with_venv.sh")
         self.verification = verification
         self._env = None
         self._base_repo = None
+        self._system_wide_install = system_wide_install
 
     def _generate_env(self):
         env = os.environ.copy()
@@ -79,6 +80,13 @@ class Tempest(object):
         env["OS_TEST_PATH"] = self.path("tempest/test_discover")
         LOG.debug("Generated environ: %s" % env)
         self._env = env
+
+    @property
+    def venv_wrapper(self):
+        if self._system_wide_install:
+            return ""
+        else:
+            return self.path("tools/with_venv.sh")
 
     @property
     def env(self):
@@ -101,18 +109,17 @@ class Tempest(object):
                 cwd=os.path.abspath(directory))
 
     @staticmethod
-    def _move_contents_to_subdir(base, subdir):
-        """Moves contents of directory :base into its sub-directory :subdir
+    def _move_contents_to_dir(base, directory):
+        """Moves contents of directory :base into directory :directory
 
         :param base: source directory to move files from
-        :param subdir: name of subdirectory to move files to
+        :param directory: directory to move files to
         """
         for filename in os.listdir(base):
             source = os.path.join(base, filename)
-            dest = os.path.join(base, subdir)
             LOG.debug("Moving file {source} to {dest}".format(source=source,
-                                                              dest=dest))
-            shutil.move(source, os.path.join(dest, filename))
+                                                              dest=directory))
+            shutil.move(source, os.path.join(directory, filename))
 
     @property
     def base_repo(self):
@@ -137,12 +144,13 @@ class Tempest(object):
         if os.path.exists(Tempest.base_repo_dir):
             if self._is_git_repo(Tempest.base_repo_dir):
                 # this is the old dir structure and needs to be upgraded
-                directory = utils.generate_random_name("tempest_base-")
+                directory = tempfile.mkdtemp(prefix=os.path.join(
+                    Tempest.base_repo_dir, "tempest_base-"))
                 LOG.debug("Upgrading Tempest directory tree: "
                           "Moving Tempest base dir %s into subdirectory %s" %
                           (Tempest.base_repo_dir, directory))
-                self._move_contents_to_subdir(Tempest.base_repo_dir,
-                                              directory)
+                self._move_contents_to_dir(Tempest.base_repo_dir,
+                                           directory)
             if not self._base_repo:
                 # Search existing tempest bases for a matching source
                 repos = [d for d in os.listdir(Tempest.base_repo_dir)
@@ -155,10 +163,11 @@ class Tempest(object):
                 if repos:
                     # Use existing base with relevant source
                     self._base_repo = repos.pop()
+        else:
+            os.makedirs(Tempest.base_repo_dir)
         if not self._base_repo:
-            directory = utils.generate_random_name("tempest_base-")
-            self._base_repo = os.path.join(
-                os.path.abspath(Tempest.base_repo_dir), directory)
+            self._base_repo = tempfile.mkdtemp(prefix=os.path.join(
+                os.path.abspath(Tempest.base_repo_dir), "tempest_base-"))
         return self._base_repo
 
     @staticmethod
@@ -171,7 +180,8 @@ class Tempest(object):
         path_to_venv = self.path(".venv")
 
         if not os.path.isdir(path_to_venv):
-            print("No virtual environment found...Install the virtualenv.")
+            LOG.debug("No virtual environment for Tempest found.")
+            LOG.info(_("Installing the virtual environment for Tempest."))
             LOG.debug("Virtual environment directory: %s" % path_to_venv)
             required_vers = (2, 7)
             if sys.version_info[:2] != required_vers:
@@ -191,8 +201,18 @@ class Tempest(object):
             try:
                 check_output("%s ./tools/install_venv.py" % python_interpreter,
                              shell=True, cwd=self.path())
-                check_output("%s python setup.py install" % self.venv_wrapper,
-                             shell=True, cwd=self.path())
+                # NOTE(kun): Using develop mode installation is for run
+                #            multiple tempest instance. However, dependency
+                #            from tempest(os-testr) has issues here, before
+                #            https://review.openstack.org/#/c/207691/ being
+                #            merged, we have to install dependency manually and
+                #            run setup.py with -N(install package without
+                #            dependency)
+                check_output("%s pip install -r requirements.txt "
+                             "-r test-requirements.txt" %
+                             self.venv_wrapper, shell=True, cwd=self.path())
+                check_output("%s python setup.py develop -N" %
+                             self.venv_wrapper, shell=True, cwd=self.path())
             except subprocess.CalledProcessError:
                 if os.path.exists(self.path(".venv")):
                     shutil.rmtree(self.path(".venv"))
@@ -201,22 +221,25 @@ class Tempest(object):
     def is_configured(self):
         return os.path.isfile(self.config_file)
 
-    def generate_config_file(self):
-        """Generate configuration file of tempest for current deployment."""
+    def generate_config_file(self, override=False):
+        """Generate configuration file of tempest for current deployment.
 
-        LOG.debug("Tempest config file: %s " % self.config_file)
-        if not self.is_configured():
+        :param override: Whether or not override existing Tempest config file
+        """
+        if not self.is_configured() or override:
             msg = _("Creation of configuration file for tempest.")
             LOG.info(_("Starting: ") + msg)
 
-            config.TempestConf(self.deployment).generate(self.config_file)
+            config.TempestConfig(self.deployment).generate(self.config_file)
             LOG.info(_("Completed: ") + msg)
         else:
             LOG.info("Tempest is already configured.")
 
+        LOG.info("Tempest config file: %s " % self.config_file)
+
     def _initialize_testr(self):
         if not os.path.isdir(self.path(".testrepository")):
-            print(_("Test Repository initialization."))
+            LOG.debug("Test Repository initialization.")
             try:
                 check_output("%s testr init" % self.venv_wrapper,
                              shell=True, cwd=self.path())
@@ -229,8 +252,7 @@ class Tempest(object):
         return os.path.exists(self.path(".venv"))
 
     def _clone(self):
-        print("Please wait while tempest is being cloned. "
-              "This could take a few minutes...")
+        LOG.info(_("Please, wait while Tempest is being cloned."))
         try:
             subprocess.check_call(["git", "clone",
                                    self.tempest_source,
@@ -244,7 +266,7 @@ class Tempest(object):
         """Creates local Tempest repo and virtualenv for deployment."""
         if not self.is_installed():
             try:
-                if not os.path.exists(self.base_repo):
+                if not self._is_git_repo(self.base_repo):
                     self._clone()
 
                 if not os.path.exists(self.path()):
@@ -252,16 +274,17 @@ class Tempest(object):
                     subprocess.check_call("git checkout master; "
                                           "git pull", shell=True,
                                           cwd=self.path("tempest"))
-                self._install_venv()
+                if not self._system_wide_install:
+                    self._install_venv()
                 self._initialize_testr()
             except subprocess.CalledProcessError as e:
                 self.uninstall()
                 raise TempestSetupFailure("failed cmd: '%s'" % e.cmd)
             else:
-                print("Tempest has been successfully installed!")
+                LOG.info(_("Tempest has been successfully installed!"))
 
         else:
-            print("Tempest is already installed")
+            LOG.info(_("Tempest is already installed."))
 
     def uninstall(self):
         """Removes local Tempest repo and virtualenv for deployment
@@ -288,8 +311,8 @@ class Tempest(object):
         try:
             self.run(testr_arg)
         except subprocess.CalledProcessError:
-            print("Test set '%s' has been finished with error. "
-                  "Check log for details" % set_name)
+            LOG.info(_("Test set '%s' has been finished with errors. "
+                       "Check logs for details.") % set_name)
 
     def run(self, testr_arg=None, log_file=None, tempest_conf=None):
         """Launch tempest with given arguments
@@ -322,8 +345,12 @@ class Tempest(object):
                 "log_file": log_file or self.log_file_raw
             })
         LOG.debug("Test(s) started by the command: %s" % test_cmd)
-        subprocess.check_call(test_cmd, cwd=self.path(),
-                              env=self.env, shell=True)
+        # Create all resources needed for Tempest before running tests.
+        # Once tests finish, all created resources will be deleted.
+        with config.TempestResourcesContext(self.deployment, self.config_file):
+            # Run tests
+            subprocess.check_call(test_cmd, cwd=self.path(),
+                                  env=self.env, shell=True)
 
     def discover_tests(self, pattern=""):
         """Return a set of discovered tests which match given pattern."""
@@ -358,8 +385,8 @@ class Tempest(object):
 
     @utils.log_verification_wrapper(
         LOG.info, _("Saving verification results."))
-    def _save_results(self):
-        total, test_cases = self.parse_results()
+    def _save_results(self, log_file=None):
+        total, test_cases = self.parse_results(log_file)
         if total and test_cases and self.verification:
             self.verification.finish_verification(total=total,
                                                   test_cases=test_cases)
@@ -369,3 +396,10 @@ class Tempest(object):
     def verify(self, set_name, regex):
         self._prepare_and_run(set_name, regex)
         self._save_results()
+
+    def import_results(self, set_name, log_file):
+        if log_file:
+            self.verification.start_verifying(set_name)
+            self._save_results(log_file)
+        else:
+            LOG.error("No log file to import results was specified.")

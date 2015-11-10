@@ -13,22 +13,22 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from rally.benchmark.context import base
 from rally.common import log as logging
 from rally import consts
 from rally import osclients
+from rally.task import context
 
 LOG = logging.getLogger(__name__)
 
 
-@base.context(name="create_flavor", order=1000)
-class CreateFlavorContext(base.Context):
+@context.configure(name="create_flavor", order=1000)
+class CreateFlavorContext(context.Context):
     """Create sample flavor
 
     This sample create flavor with specified options before task starts and
     delete it after task completion.
     To create your own context plugin, inherit it from
-    rally.benchmark.context.base.Context
+    rally.task.context.Context
     """
 
     CONFIG_SCHEMA = {
@@ -57,9 +57,9 @@ class CreateFlavorContext(base.Context):
     def setup(self):
         """This method is called before the task start."""
         try:
-            # use rally.osclients to get nessesary client instance
+            # use rally.osclients to get necessary client instance
             nova = osclients.Clients(self.context["admin"]["endpoint"]).nova()
-            # and than do what you need with this client
+            # and then do what you need with this client
             self.context["flavor"] = nova.flavors.create(
                 # context settings are stored in self.config
                 name=self.config.get("flavor_name", "rally_test_flavor"),
@@ -68,7 +68,7 @@ class CreateFlavorContext(base.Context):
                 disk=self.config.get("disk", 1)).to_dict()
             LOG.debug("Flavor with id '%s'" % self.context["flavor"]["id"])
         except Exception as e:
-            msg = "Can't create flavor: %s" % e.message
+            msg = "Can't create flavor: %s" % e
             if logging.is_debug():
                 LOG.exception(msg)
             else:
@@ -81,7 +81,7 @@ class CreateFlavorContext(base.Context):
             nova.flavors.delete(self.context["flavor"]["id"])
             LOG.debug("Flavor '%s' deleted" % self.context["flavor"]["id"])
         except Exception as e:
-            msg = "Can't delete flavor: %s" % e.message
+            msg = "Can't delete flavor: %s" % e
             if logging.is_debug():
                 LOG.exception(msg)
             else:

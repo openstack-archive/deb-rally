@@ -21,6 +21,10 @@ if [ ! -d $RALLY_JOB_DIR ]; then
     RALLY_JOB_DIR=$BASE/new/$PROJECT/rally-jobs
 fi
 
+echo $RALLY_JOB_DIR
+echo $RALLY_DIR
+ls $BASE/new/$PROJECT
+
 BASE_FOR_TASK=${RALLY_JOB_DIR}/${RALLY_SCENARIO}
 
 TASK=${BASE_FOR_TASK}.yaml
@@ -36,7 +40,7 @@ RALLY_PLUGINS_DIR=~/.rally/plugins
 
 mkdir -p $RALLY_PLUGINS_DIR
 if [ -d $PLUGINS_DIR ]; then
-    cp -r $PLUGINS_DIR/*.py $RALLY_PLUGINS_DIR
+    cp -r $PLUGINS_DIR/ $RALLY_PLUGINS_DIR
 fi
 
 if [ -d $EXTRA_DIR ]; then
@@ -56,7 +60,7 @@ rally show networks
 rally show secgroups
 rally show keypairs
 
-rally -v task start --task $TASK $TASK_ARGS
+rally -v --rally-debug task start --task $TASK $TASK_ARGS
 
 mkdir -p rally-plot/extra
 python $BASE/new/rally/rally/ui/utils.py render\
