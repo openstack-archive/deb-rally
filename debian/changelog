@@ -1,5 +1,7 @@
-rally (0.0.3-7) UNRELEASED; urgency=medium
+rally (0.1.1-1) unstable; urgency=medium
 
+  * New upstream release:
+    - Fixes FTBFS (Closes: #804588).
   * Added Danish translation of the debconf templates, thanks to Joe Dalton
     <joedalton2@yahoo.dk> (Closes: #800398).
   * Added python-pymysql as runtime build-depends.
