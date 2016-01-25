@@ -22,7 +22,7 @@ from novaclient import exceptions as nova_exc
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally import consts
 from rally import exceptions
 
@@ -100,6 +100,7 @@ def manager_list_size(sizes):
     return _list
 
 
+@logging.log_deprecated("Use wait_for_status instead.", "0.1.2", once=True)
 def wait_for(resource, is_ready=None, ready_statuses=None,
              failure_statuses=None, status_attr="status", update_resource=None,
              timeout=60, check_interval=1):
@@ -146,6 +147,7 @@ def wait_for(resource, is_ready=None, ready_statuses=None,
                                check_interval=check_interval)
 
 
+@logging.log_deprecated("Use wait_for_status instead.", "0.1.2", once=True)
 def wait_is_ready(resource, is_ready, update_resource=None,
                   timeout=60, check_interval=1):
 
@@ -171,7 +173,7 @@ def wait_is_ready(resource, is_ready, update_resource=None,
 
 def wait_for_status(resource, ready_statuses, failure_statuses=None,
                     status_attr="status", update_resource=None,
-                    timeout=60, check_interval=1):
+                    timeout=60, check_interval=1, check_deletion=False):
 
     resource_repr = getattr(resource, "name", repr(resource))
     if not isinstance(ready_statuses, (set, list, tuple)):
@@ -205,7 +207,13 @@ def wait_for_status(resource, ready_statuses, failure_statuses=None,
     latest_status_update = start
 
     while True:
-        resource = update_resource(resource)
+        try:
+            resource = update_resource(resource)
+        except exceptions.GetResourceNotFound:
+            if check_deletion:
+                return
+            else:
+                raise
         status = get_status(resource, status_attr)
 
         if status != latest_status:
@@ -231,13 +239,14 @@ def wait_for_status(resource, ready_statuses, failure_statuses=None,
         time.sleep(check_interval)
         if time.time() - start > timeout:
             raise exceptions.TimeoutException(
-                desired_status=ready_statuses,
+                desired_status="('%s')" % "', '".join(ready_statuses),
                 resource_name=resource_repr,
                 resource_type=resource.__class__.__name__,
                 resource_id=getattr(resource, "id", "<no id>"),
                 resource_status=get_status(resource))
 
 
+@logging.log_deprecated("Use wait_for_status instead.", "0.1.2", once=True)
 def wait_for_delete(resource, update_resource=None, timeout=60,
                     check_interval=1):
     """Wait for the full deletion of resource.
@@ -299,7 +308,7 @@ class ActionBuilder(object):
 
     [{"action": times}, {"action": times}...]
 
-    Here 'action' is a string which indicates a action to perform and
+    Here 'action' is a string which indicates an action to perform and
     'times' is a non-zero positive integer which specifies how many
     times to run the action in sequence.
 

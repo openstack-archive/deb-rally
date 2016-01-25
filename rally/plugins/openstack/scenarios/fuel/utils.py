@@ -14,6 +14,7 @@
 
 
 import os
+import random
 import time
 
 import six
@@ -103,15 +104,16 @@ class FuelClient(object):
         self.task = get_client("task", version=version)
 
 
-@osclients.Clients.register("fuel")
-def fuel(instance):
+@osclients.configure("fuel", default_version="v1")
+class Fuel(osclients.OSClient):
     """FuelClient factory for osclients.Clients."""
-    auth_url = six.moves.urllib.parse.urlparse(instance.endpoint.auth_url)
-    return FuelClient(version="v1",
-                      server_address=auth_url.hostname,
-                      server_port=8000,
-                      username=instance.endpoint.username,
-                      password=instance.endpoint.password)
+    def create_client(self, *args, **kwargs):
+        auth_url = six.moves.urllib.parse.urlparse(self.credential.auth_url)
+        return FuelClient(version=self.choose_version(),
+                          server_address=auth_url.hostname,
+                          server_port=8000,
+                          username=self.credential.username,
+                          password=self.credential.password)
 
 
 class FuelScenario(scenario.OpenStackScenario):
@@ -119,18 +121,14 @@ class FuelScenario(scenario.OpenStackScenario):
 
     @atomic.action_timer("fuel.list_environments")
     def _list_environments(self):
-        return [env for env in self.admin_clients("fuel").environment.list()
-                if env["name"].startswith(
-                    scenario.OpenStackScenario.RESOURCE_NAME_PREFIX)]
+        return self.admin_clients("fuel").environment.list()
 
     @atomic.action_timer("fuel.create_environment")
     def _create_environment(self, release_id=1,
                             network_provider="neutron",
                             deployment_mode="ha_compact",
                             net_segment_type="vlan"):
-
-        name = self._generate_random_name(
-            prefix=scenario.OpenStackScenario.RESOURCE_NAME_PREFIX)
+        name = self.generate_random_name()
         env = self.admin_clients("fuel").environment.create(
             name, release_id, network_provider, deployment_mode,
             net_segment_type)
@@ -138,5 +136,60 @@ class FuelScenario(scenario.OpenStackScenario):
 
     @atomic.action_timer("fuel.delete_environment")
     def _delete_environment(self, env_id, retries=5):
-        self.admin_clients("fuel").environment.delete(
-            env_id, retries)
+        self.admin_clients("fuel").environment.delete(env_id, retries)
+
+    @atomic.action_timer("fuel.add_node")
+    def _add_node(self, env_id, node_ids, node_roles=None):
+        """Add node to environment
+
+        :param env_id: environment id
+        :param node_ids: list of node ids
+        :param node_roles: list of roles
+        """
+
+        node_roles = node_roles or ["compute"]
+
+        try:
+            self.admin_clients("fuel").environment.client.add_nodes(
+                env_id, node_ids, node_roles)
+        except BaseException as e:
+            raise RuntimeError(
+                "Unable to add node(s) to environment. Fuel client exited "
+                "with error %s" % e)
+
+    @atomic.action_timer("fuel.delete_node")
+    def _remove_node(self, env_id, node_id):
+
+        env = FuelClient.fuelclient_module.objects.environment.Environment(
+            env_id)
+        try:
+            env.unassign([node_id])
+        except BaseException as e:
+            raise RuntimeError(
+                "Unable to add node(s) to environment. Fuel client exited "
+                "with error %s" % e)
+
+    @atomic.action_timer("fuel.list_nodes")
+    def _list_node_ids(self, env_id=None):
+        result = self.admin_clients("fuel").node.get_all(
+            environment_id=env_id)
+        return [x["id"] for x in result]
+
+    def _node_is_assigned(self, node_id):
+        try:
+            node = self.admin_clients("fuel").node.get_by_id(node_id)
+            return bool(node["cluster"])
+        except BaseException as e:
+            raise RuntimeError(
+                "Unable to add node(s) to environment. Fuel client exited "
+                "with error %s" % e)
+
+    def _get_free_node_id(self):
+        node_ids = self._list_node_ids()
+        random.shuffle(node_ids)
+
+        for node_id in node_ids:
+            if not self._node_is_assigned(node_id):
+                return node_id
+        else:
+            raise RuntimeError("Can not found free node.")

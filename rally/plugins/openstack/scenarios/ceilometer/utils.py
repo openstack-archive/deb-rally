@@ -12,6 +12,11 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import datetime
+
+import six
+
+from rally import exceptions
 from rally.plugins.openstack import scenario
 from rally.task import atomic
 from rally.task import utils as bench_utils
@@ -20,7 +25,142 @@ from rally.task import utils as bench_utils
 class CeilometerScenario(scenario.OpenStackScenario):
     """Base class for Ceilometer scenarios with basic atomic actions."""
 
-    RESOURCE_NAME_PREFIX = "rally_ceilometer_"
+    def _make_samples(self, count=1, interval=0, counter_name="cpu_util",
+                      counter_type="gauge", counter_unit="%", counter_volume=1,
+                      project_id=None, user_id=None, source=None,
+                      timestamp=None, metadata_list=None, batch_size=None):
+        """Prepare and return a list of samples.
+
+        :param count: specifies number of samples in array
+        :param interval: specifies interval between timestamps of near-by
+        samples
+        :param counter_name: specifies name of the counter
+        :param counter_type: specifies type of the counter
+        :param counter_unit: specifies unit of the counter
+        :param counter_volume: specifies volume of the counter
+        :param project_id: specifies project id for samples
+        :param user_id: specifies user id for samples
+        :param source: specifies source for samples
+        :param timestamp: specifies timestamp for samples
+        :param metadata_list: specifies list of resource metadata
+        :param batch_size: specifies number of samples to store in one query
+        :returns: generator that produces lists of samples
+        """
+        batch_size = batch_size or count
+        sample = {
+            "counter_name": counter_name,
+            "counter_type": counter_type,
+            "counter_unit": counter_unit,
+            "counter_volume": counter_volume,
+            "resource_id": self.generate_random_name()
+        }
+        opt_fields = {
+            "project_id": project_id,
+            "user_id": user_id,
+            "source": source,
+            "timestamp": timestamp,
+        }
+        for k, v in six.iteritems(opt_fields):
+            if v:
+                sample.update({k: v})
+        len_meta = len(metadata_list) if metadata_list else 0
+        now = timestamp or datetime.datetime.utcnow()
+        samples = []
+        for i in six.moves.xrange(count):
+            if i and not (i % batch_size):
+                yield samples
+                samples = []
+            sample_item = dict(sample)
+            sample_item["timestamp"] = (
+                now - datetime.timedelta(seconds=(interval * i))
+            ).isoformat()
+            if metadata_list:
+                # NOTE(idegtiarov): Adding more than one template of metadata
+                # required it's proportional distribution among whole samples.
+                sample_item["resource_metadata"] = metadata_list[
+                    i * len_meta // count
+                ]
+            samples.append(sample_item)
+        yield samples
+
+    def _make_query_item(self, field, op="eq", value=None):
+        """Create a SimpleQuery item for requests.
+
+        :param field: filtered field
+        :param op: operator for filtering
+        :param value: matched value
+
+        :returns: dict with field, op and value keys for query
+        """
+        return {"field": field, "op": op, "value": value}
+
+    def _make_general_query(self, filter_by_project_id=None,
+                            filter_by_user_id=None,
+                            filter_by_resource_id=None,
+                            metadata_query=None):
+        """Create a SimpleQuery for the list benchmarks.
+
+        :param filter_by_project_id: add a project id to query
+        :param filter_by_user_id: add a user id to query
+        :param filter_by_resource_id: add a resource id to query
+        :param metadata_query: metadata dict that will add to query
+
+        :returns: SimpleQuery with specified items
+
+        """
+        query = []
+        metadata_query = metadata_query or {}
+
+        if filter_by_user_id:
+            user_id = self.context["user"]["id"]
+            query.append(self._make_query_item("user_id", "eq", user_id))
+
+        if filter_by_project_id or filter_by_resource_id:
+            project_id = self.context["tenant"]["id"]
+            if filter_by_project_id:
+                query.append(self._make_query_item("project_id", "eq",
+                                                   project_id))
+            if filter_by_resource_id:
+                resource_id = self.context["tenant"]["resources"][0]
+                query.append(self._make_query_item("resource_id", "eq",
+                                                   resource_id))
+
+        for key, value in metadata_query.items():
+            query.append(self._make_query_item("metadata.%s" % key,
+                                               value=value))
+        return query
+
+    def _make_timestamp_query(self, start_time=None, end_time=None):
+        """Create ceilometer query for timestamp range.
+
+        :param start_time: start datetime in isoformat
+        :param end_time: end datetime in isoformat
+        :returns: query with timestamp range
+        """
+        query = []
+        if end_time and start_time and end_time < start_time:
+            msg = "End time should be great or equal than start time"
+            raise exceptions.InvalidArgumentsException(msg)
+        if start_time:
+            query.append(self._make_query_item("timestamp", ">=", start_time))
+        if end_time:
+            query.append(self._make_query_item("timestamp", "<=", end_time))
+        return query
+
+    def _make_profiler_key(self, method, query=None, limit=None):
+        """Create key for profiling method with query.
+
+        :param method: Original profiler tag for method
+        :param query: ceilometer query which fields will be added to key
+        :param limit: if it exists `limit` will be added to key
+        :returns: profiler key that includes method and queried fields
+        """
+        query = query or []
+        limit_line = limit and "limit" or ""
+        fields_line = "&".join("%s" % a["field"] for a in query)
+        key_identifiers = "&".join(x for x in (limit_line, fields_line) if x)
+        key = ":".join(x for x in (method, key_identifiers) if x)
+        return key
 
     def _get_alarm_dict(self, **kwargs):
         """Prepare and return an alarm dict for creating an alarm.
@@ -28,7 +168,7 @@ class CeilometerScenario(scenario.OpenStackScenario):
         :param kwargs: optional parameters to create alarm
         :returns: alarm dictionary used to create an alarm
         """
-        alarm_id = self._generate_random_name()
+        alarm_id = self.generate_random_name()
         alarm = {"alarm_id": alarm_id,
                  "name": alarm_id,
                  "description": "Test Alarm"}
@@ -113,7 +253,7 @@ class CeilometerScenario(scenario.OpenStackScenario):
         """
         self.clients("ceilometer").alarms.set_state(alarm.alarm_id, state)
         return bench_utils.wait_for(alarm,
-                                    is_ready=bench_utils.resource_is(state),
+                                    ready_statuses=[state],
                                     update_resource=bench_utils
                                     .get_from_manager(),
                                     timeout=timeout, check_interval=1)
@@ -167,26 +307,18 @@ class CeilometerScenario(scenario.OpenStackScenario):
         return self.admin_clients("ceilometer").trait_descriptions.list(
             event_type)
 
-    @atomic.action_timer("ceilometer.list_meters")
-    def _list_meters(self):
-        """Get list of user's meters."""
-        return self.clients("ceilometer").meters.list()
-
-    @atomic.action_timer("ceilometer.list_resources")
-    def _list_resources(self):
-        """List all resources.
-
-        :returns: list of all resources
-        """
-        return self.clients("ceilometer").resources.list()
-
-    @atomic.action_timer("ceilometer.list_samples")
-    def _list_samples(self):
+    def _list_samples(self, query=None, limit=None):
         """List all Samples.
 
-        :returns: list of all samples
+        :param query: optional param that specify query
+        :param limit: optional param for maximum number of samples returned
+        :returns: list of samples
         """
-        return self.clients("ceilometer").samples.list()
+        key = self._make_profiler_key("ceilometer.list_samples", query,
+                                      limit)
+        with atomic.ActionTimer(self, key):
+            return self.clients("ceilometer").samples.list(q=query,
+                                                           limit=limit)
 
     @atomic.action_timer("ceilometer.get_resource")
     def _get_resource(self, resource_id):
@@ -194,22 +326,32 @@ class CeilometerScenario(scenario.OpenStackScenario):
         return self.clients("ceilometer").resources.get(resource_id)
 
     @atomic.action_timer("ceilometer.get_stats")
-    def _get_stats(self, meter_name):
+    def _get_stats(self, meter_name, query=None, period=None, groupby=None,
+                   aggregates=None):
         """Get stats for a specific meter.
 
         :param meter_name: Name of ceilometer meter
+        :param query: list of queries
+        :param period: the length of the time range covered by these stats
+        :param groupby: the fields used to group the samples
+        :param aggregates: function for samples aggregation
+
+        :returns: list of statistics data
         """
-        return self.clients("ceilometer").statistics.list(meter_name)
+        return self.clients("ceilometer").statistics.list(meter_name, q=query,
+                                                          period=period,
+                                                          groupby=groupby,
+                                                          aggregates=aggregates
+                                                          )
 
     @atomic.action_timer("ceilometer.create_meter")
     def _create_meter(self, **kwargs):
         """Create a new meter.
 
-        :param name_length: Length of meter name to be generated
         :param kwargs: Contains the optional attributes for meter creation
         :returns: Newly created meter
         """
-        name = self._generate_random_name()
+        name = self.generate_random_name()
         samples = self.clients("ceilometer").samples.create(
             counter_name=name, **kwargs)
         return samples[0]
@@ -262,9 +404,17 @@ class CeilometerScenario(scenario.OpenStackScenario):
                        "counter_unit": counter_unit,
                        "counter_volume": counter_volume,
                        "resource_id": resource_id if resource_id
-                       else self._generate_random_name(
-                           prefix="rally_resource_")})
+                       else self.generate_random_name()})
         return self.clients("ceilometer").samples.create(**kwargs)
+
+    @atomic.action_timer("ceilometer.create_samples")
+    def _create_samples(self, samples):
+        """Create Samples with specified parameters.
+
+        :param samples: a list of samples to create
+        :returns: created list samples
+        """
+        return self.clients("ceilometer").samples.create_list(samples)
 
     @atomic.action_timer("ceilometer.query_samples")
     def _query_samples(self, filter, orderby, limit):
@@ -280,3 +430,31 @@ class CeilometerScenario(scenario.OpenStackScenario):
         """
         return self.clients("ceilometer").query_samples.query(
             filter, orderby, limit)
+
+    def _list_resources(self, query=None, limit=None):
+        """List all resources.
+
+        :param query: query list for Ceilometer api
+        :param limit: count of returned resources
+        :returns: list of all resources
+        """
+
+        key = self._make_profiler_key("ceilometer.list_resources", query,
+                                      limit)
+        with atomic.ActionTimer(self, key):
+            return self.clients("ceilometer").resources.list(q=query,
+                                                             limit=limit)
+
+    def _list_meters(self, query=None, limit=None):
+        """Get list of user's meters.
+
+        :param query: query list for Ceilometer api
+        :param limit: count of returned meters
+        :returns: list of all meters
+        """
+
+        key = self._make_profiler_key("ceilometer.list_meters", query,
+                                      limit)
+        with atomic.ActionTimer(self, key):
+            return self.clients("ceilometer").meters.list(q=query,
+                                                          limit=limit)

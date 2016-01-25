@@ -13,7 +13,7 @@
 # under the License.
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally.plugins.openstack.context.cleanup import manager as resource_manager
@@ -57,13 +57,17 @@ class ImageGenerator(context.Context):
                 "type": "integer",
                 "minimum": 1
             },
+            "image_args": {
+                "type": "object",
+                "additionalProperties": True
+            }
         },
         "required": ["image_url", "image_type", "image_container",
                      "images_per_tenant"],
         "additionalProperties": False
     }
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `Images`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `Images`"))
     def setup(self):
         image_url = self.config["image_url"]
         image_type = self.config["image_type"]
@@ -74,7 +78,19 @@ class ImageGenerator(context.Context):
         for user, tenant_id in rutils.iterate_per_tenants(
                 self.context["users"]):
             current_images = []
-            glance_scenario = glance_utils.GlanceScenario({"user": user})
+            glance_scenario = glance_utils.GlanceScenario(
+                {"user": user, "task": self.context["task"]})
+
+            kwargs = self.config.get("image_args", {})
+            if self.config.get("min_ram") is not None:
+                LOG.warning("The 'min_ram' argument is deprecated; specify "
+                            "arbitrary arguments with 'image_args' instead")
+                kwargs["min_ram"] = self.config["min_ram"]
+            if self.config.get("min_disk") is not None:
+                LOG.warning("The 'min_disk' argument is deprecated; specify "
+                            "arbitrary arguments with 'image_args' instead")
+                kwargs["min_disk"] = self.config["min_disk"]
+
             for i in range(images_per_tenant):
                 if image_name and i > 0:
                     cur_name = image_name + str(i)
@@ -85,14 +101,12 @@ class ImageGenerator(context.Context):
 
                 image = glance_scenario._create_image(
                     image_container, image_url, image_type,
-                    name=cur_name, prefix="rally_ctx_image_",
-                    min_ram=self.config.get("min_ram", 0),
-                    min_disk=self.config.get("min_disk", 0))
+                    name=cur_name, **kwargs)
                 current_images.append(image.id)
 
             self.context["tenants"][tenant_id]["images"] = current_images
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `Images`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `Images`"))
     def cleanup(self):
         # TODO(boris-42): Delete only resources created by this context
         resource_manager.cleanup(names=["glance.images"],

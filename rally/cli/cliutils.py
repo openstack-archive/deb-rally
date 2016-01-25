@@ -30,7 +30,7 @@ import six
 import sqlalchemy.exc
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common.plugin import discover
 from rally.common.plugin import info
 from rally.common import version
@@ -185,7 +185,7 @@ def make_table_header(table_label, table_width,
     :param horizontal_char: character used for horizontal lines.
     :param vertical_char: character used for vertical lines.
 
-    :returns string
+    :returns: string
     """
 
     if len(table_label) >= (table_width - 2):
@@ -309,6 +309,10 @@ def pretty_float_formatter(field, ndigits=None):
 def args(*args, **kwargs):
     def _decorator(func):
         func.__dict__.setdefault("args", []).insert(0, (args, kwargs))
+        if "metavar" not in kwargs and "action" not in kwargs:
+            # NOTE(andreykurilin): argparse constructs awful metavars...
+            kwargs["metavar"] = "<%s>" % args[0].replace(
+                "--", "").replace("-", "_")
         return func
     return _decorator
 
@@ -326,12 +330,19 @@ def alias(command_name):
 
 def deprecated_args(*args, **kwargs):
     def _decorator(func):
+        if "release" not in kwargs:
+            raise ValueError("'release' is required keyword argument of "
+                             "'deprecated_args' decorator.")
         func.__dict__.setdefault("args", []).insert(0, (args, kwargs))
         func.__dict__.setdefault("deprecated_args", [])
         func.deprecated_args.append(args[0])
-        if "help" in kwargs.keys():
-            warn_message = "DEPRECATED!"
-            kwargs["help"] = " ".join([warn_message, kwargs["help"]])
+
+        help_msg = "[Deprecated since Rally %s] " % kwargs.pop("release")
+        if "alternative" in kwargs:
+            help_msg += "Use '%s' instead. " % kwargs.pop("alternative")
+        if "help" in kwargs:
+            help_msg += kwargs["help"]
+        kwargs["help"] = help_msg
         return func
     return _decorator
 
@@ -557,7 +568,7 @@ def run(argv, categories):
         if logging.is_debug():
             LOG.exception(e)
         print(e)
-        print("Looks like Rally can't connect to it's DB.")
+        print("Looks like Rally can't connect to its DB.")
         print("Make a sure that connection string in rally.conf is proper:")
         print(CONF.database.connection)
         return 1

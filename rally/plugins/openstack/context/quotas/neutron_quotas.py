@@ -12,7 +12,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from rally.common import log as logging
+from rally.common import logging
 
 
 LOG = logging.getLogger(__name__)
@@ -58,6 +58,10 @@ class NeutronQuotas(object):
                 "minimum": -1
             },
             "vip": {
+                "type": "integer",
+                "minimum": -1
+            },
+            "health_monitor": {
                 "type": "integer",
                 "minimum": -1
             }

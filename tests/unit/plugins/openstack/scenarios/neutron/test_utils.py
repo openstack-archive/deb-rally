@@ -24,11 +24,13 @@ from tests.unit import test
 NEUTRON_UTILS = "rally.plugins.openstack.scenarios.neutron.utils."
 
 
+@ddt.ddt
 class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def setUp(self):
         super(NeutronScenarioTestCase, self).setUp()
         self.network = mock.Mock()
+        self.scenario = utils.NeutronScenario(self.context)
 
     def test__get_network_id(self):
         neutron_scenario = utils.NeutronScenario()
@@ -62,11 +64,11 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         neutron_scenario._list_networks.assert_called_once_with(
             atomic_action=False)
 
-    @mock.patch(NEUTRON_UTILS + "NeutronScenario._generate_random_name")
-    def test_create_network(self, mock__generate_random_name):
+    def test_create_network(self):
         neutron_scenario = utils.NeutronScenario(self.context)
         random_name = "random_name"
-        mock__generate_random_name.return_value = random_name
+        neutron_scenario.generate_random_name = mock.Mock(
+            return_value=random_name)
         self.clients("neutron").create_network.return_value = self.network
 
         network_data = {"admin_state_up": False}
@@ -96,11 +98,11 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_update_network(self):
         scenario = utils.NeutronScenario(context=self.context)
-        scenario._generate_random_name = mock.Mock()
+        scenario.generate_random_name = mock.Mock()
 
         expected_network = {
             "network": {
-                "name": scenario._generate_random_name.return_value,
+                "name": scenario.generate_random_name.return_value,
                 "admin_state_up": False,
                 "fakearg": "fake"
             }
@@ -128,10 +130,9 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.delete_network")
 
-    @mock.patch(NEUTRON_UTILS + "NeutronScenario._generate_random_name",
-                return_value="test_subnet")
-    def test_create_subnet(self, mock__generate_random_name):
+    def test_create_subnet(self):
         scenario = utils.NeutronScenario(self.context)
+        scenario.generate_random_name = mock.Mock(return_value="test_subnet")
         network_id = "fake-id"
         start_cidr = "192.168.0.0/24"
 
@@ -141,7 +142,7 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
                 "network_id": network_id,
                 "cidr": start_cidr,
                 "ip_version": scenario.SUBNET_IP_VERSION,
-                "name": mock__generate_random_name.return_value
+                "name": scenario.generate_random_name.return_value
             }
         }
 
@@ -176,10 +177,10 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_update_subnet(self):
         scenario = utils.NeutronScenario(context=self.context)
-        scenario._generate_random_name = mock.Mock()
+        scenario.generate_random_name = mock.Mock()
         expected_subnet = {
             "subnet": {
-                "name": scenario._generate_random_name.return_value,
+                "name": scenario.generate_random_name.return_value,
                 "enable_dhcp": False,
                 "fakearg": "fake"
             }
@@ -207,11 +208,11 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.delete_subnet")
 
-    @mock.patch(NEUTRON_UTILS + "NeutronScenario._generate_random_name")
-    def test_create_router_default(self, mock__generate_random_name):
+    @mock.patch(NEUTRON_UTILS + "NeutronScenario.generate_random_name")
+    def test_create_router(self, mock_generate_random_name):
         scenario = utils.NeutronScenario(self.context)
         router = mock.Mock()
-        mock__generate_random_name.return_value = "random_name"
+        mock_generate_random_name.return_value = "random_name"
         self.clients("neutron").create_router.return_value = router
 
         # Default options
@@ -222,13 +223,13 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.create_router")
 
-    @mock.patch(NEUTRON_UTILS + "NeutronScenario._generate_random_name")
-    def test_create_router_with_ext_gw(self, mock__generate_random_name):
+    @mock.patch(NEUTRON_UTILS + "NeutronScenario.generate_random_name")
+    def test_create_router_with_ext_gw(self, mock_generate_random_name):
         scenario = utils.NeutronScenario()
         router = mock.Mock()
         external_network = [{"id": "ext-net", "router:external": True}]
         scenario._list_networks = mock.Mock(return_value=external_network)
-        mock__generate_random_name.return_value = "random_name"
+        mock_generate_random_name.return_value = "random_name"
         self.clients("neutron").create_router.return_value = router
 
         # External_gw options
@@ -242,14 +243,14 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.create_router")
 
-    @mock.patch(NEUTRON_UTILS + "NeutronScenario._generate_random_name")
+    @mock.patch(NEUTRON_UTILS + "NeutronScenario.generate_random_name")
     def test_create_router_with_ext_gw_but_no_ext_net(
-            self, mock__generate_random_name):
+            self, mock_generate_random_name):
         scenario = utils.NeutronScenario()
         router = mock.Mock()
         external_network = [{"id": "ext-net", "router:external": False}]
         scenario._list_networks = mock.Mock(return_value=external_network)
-        mock__generate_random_name.return_value = "random_name"
+        mock_generate_random_name.return_value = "random_name"
         self.clients("neutron").create_router.return_value = router
 
         # External_gw options with no external networks in list_networks()
@@ -285,11 +286,11 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_update_router(self):
         scenario = utils.NeutronScenario(context=self.context)
-        scenario._generate_random_name = mock.Mock()
+        scenario.generate_random_name = mock.Mock()
 
         expected_router = {
             "router": {
-                "name": scenario._generate_random_name.return_value,
+                "name": scenario.generate_random_name.return_value,
                 "admin_state_up": False,
                 "fakearg": "fake"
             }
@@ -342,14 +343,14 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_create_port(self):
         scenario = utils.NeutronScenario(self.context)
-        scenario._generate_random_name = mock.Mock()
+        scenario.generate_random_name = mock.Mock()
 
         net_id = "network-id"
         net = {"network": {"id": net_id}}
         expected_port_args = {
             "port": {
                 "network_id": net_id,
-                "name": scenario._generate_random_name.return_value
+                "name": scenario.generate_random_name.return_value
             }
         }
 
@@ -380,11 +381,11 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_update_port(self):
         scenario = utils.NeutronScenario(context=self.context)
-        scenario._generate_random_name = mock.Mock()
+        scenario.generate_random_name = mock.Mock()
 
         expected_port = {
             "port": {
-                "name": scenario._generate_random_name.return_value,
+                "name": scenario.generate_random_name.return_value,
                 "admin_state_up": False,
                 "fakearg": "fake"
             }
@@ -420,6 +421,38 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.create_port")
+
+    @ddt.data(
+        {},
+        {"network_create_args": {"fakearg": "fake"}},
+        {"context": {"tenant": {"networks":
+                                [mock.MagicMock(), mock.MagicMock()]}}},
+        {"network_create_args": {"fakearg": "fake"},
+         "context": {"tenant": {"networks":
+                                [mock.MagicMock(), mock.MagicMock()]}}})
+    @ddt.unpack
+    @mock.patch("random.choice", side_effect=lambda l: l[0])
+    def test_get_or_create_network(self, mock_random_choice,
+                                   network_create_args=None, context=None):
+        if context is None:
+            context = {"tenant": {}}
+        scenario = utils.NeutronScenario(context=context)
+        scenario._create_network = mock.Mock(
+            return_value={"network": mock.Mock()})
+
+        network = scenario._get_or_create_network(network_create_args)
+
+        # ensure that the return value is the proper type either way
+        self.assertIn("network", network)
+
+        if "networks" in context["tenant"]:
+            self.assertEqual(network,
+                             {"network": context["tenant"]["networks"][0]})
+            self.assertFalse(scenario._create_network.called)
+        else:
+            self.assertEqual(network, scenario._create_network.return_value)
+            scenario._create_network.assert_called_once_with(
+                network_create_args or {})
 
     @mock.patch(NEUTRON_UTILS + "NeutronScenario._create_subnet",
                 return_value={
@@ -490,6 +523,58 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.delete_floating_ip")
 
+    @ddt.data(
+        {},
+        {"router_create_args": {"admin_state_up": False}},
+        {"network_create_args": {"router:external": True},
+         "subnet_create_args": {"allocation_pools": []},
+         "subnet_cidr_start": "default_cidr",
+         "subnets_per_network": 3,
+         "router_create_args": {"admin_state_up": False}})
+    @ddt.unpack
+    def test_create_network_structure(self, network_create_args=None,
+                                      subnet_create_args=None,
+                                      subnet_cidr_start=None,
+                                      subnets_per_network=None,
+                                      router_create_args=None):
+        network = mock.MagicMock()
+
+        router_create_args = router_create_args or {}
+
+        subnets = []
+        routers = []
+        router_create_calls = []
+        for i in range(subnets_per_network or 1):
+            subnets.append(mock.MagicMock())
+            routers.append(mock.MagicMock())
+            router_create_calls.append(mock.call(router_create_args))
+
+        scenario = utils.NeutronScenario()
+        scenario._get_or_create_network = mock.Mock(return_value=network)
+        scenario._create_subnets = mock.Mock(return_value=subnets)
+        scenario._create_router = mock.Mock(side_effect=routers)
+        scenario._add_interface_router = mock.Mock()
+
+        actual = scenario._create_network_structure(network_create_args,
+                                                    subnet_create_args,
+                                                    subnet_cidr_start,
+                                                    subnets_per_network,
+                                                    router_create_args)
+        self.assertEqual(actual, (network, subnets, routers))
+        scenario._get_or_create_network.assert_called_once_with(
+            network_create_args)
+        scenario._create_subnets.assert_called_once_with(
+            network,
+            subnet_create_args,
+            subnet_cidr_start,
+            subnets_per_network)
+        scenario._create_router.assert_has_calls(router_create_calls)
+
+        add_iface_calls = [mock.call(subnets[i]["subnet"],
+                                     routers[i]["router"])
+                           for i in range(subnets_per_network or 1)]
+        scenario._add_interface_router.assert_has_calls(add_iface_calls)
+
     def test_delete_v1_pool(self):
         scenario = utils.NeutronScenario(context=self.context)
 
@@ -502,11 +587,11 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_update_pool(self):
         scenario = utils.NeutronScenario(context=self.context)
-        scenario._generate_random_name = mock.Mock()
+        scenario.generate_random_name = mock.Mock()
 
         expected_pool = {
             "pool": {
-                "name": scenario._generate_random_name.return_value,
+                "name": scenario.generate_random_name.return_value,
                 "admin_state_up": False,
                 "fakearg": "fake"
             }
@@ -557,10 +642,10 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
 
     def test_update_v1_vip(self):
         scenario = utils.NeutronScenario()
-        scenario._generate_random_name = mock.Mock(return_value="random_name")
+        scenario.generate_random_name = mock.Mock(return_value="random_name")
         expected_vip = {
             "vip": {
-                "name": scenario._generate_random_name.return_value,
+                "name": scenario.generate_random_name.return_value,
                 "admin_state_up": False
             }
         }
@@ -575,6 +660,77 @@ class NeutronScenarioTestCase(test.ScenarioTestCase):
             vip["vip"]["id"], expected_vip)
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "neutron.update_vip")
+
+    @mock.patch(NEUTRON_UTILS + "NeutronScenario.generate_random_name")
+    def test_create_security_group(self, mock_generate_random_name):
+        neutron_scenario = utils.NeutronScenario(self.context)
+        random_name = "random_name"
+        security_group_create_args = {"description": "Fake security group"}
+        expected_security_group = {
+            "security_group": {"id": "fake-id",
+                               "name": random_name,
+                               "description": "Fake security group"}
+        }
+        mock_generate_random_name.return_value = random_name
+        self.clients("neutron").create_security_group = mock.Mock(
+            return_value=expected_security_group)
+
+        security_group_data = {
+            "security_group":
+                {"name": "random_name",
+                 "description": "Fake security group"}
+        }
+        resultant_security_group = neutron_scenario._create_security_group(
+            **security_group_create_args)
+        self.assertEqual(expected_security_group, resultant_security_group)
+        self.clients("neutron").create_security_group.assert_called_once_with(
+            security_group_data)
+        self._test_atomic_action_timer(neutron_scenario.atomic_actions(),
+                                       "neutron.create_security_group")
+
+    def test_list_security_groups(self):
+        scenario = utils.NeutronScenario()
+        security_groups_list = [{"id": "security-group-id"}]
+        security_groups_dict = {"security_groups": security_groups_list}
+        self.clients("neutron").list_security_groups = mock.Mock(
+            return_value=security_groups_dict)
+        self.assertEqual(
+            scenario._list_security_groups(),
+            self.clients("neutron").list_security_groups.return_value)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "neutron.list_security_groups")
+
+    def test_delete_security_group(self):
+        scenario = utils.NeutronScenario()
+
+        security_group = {"security_group": {"id": "fake-id"}}
+        scenario._delete_security_group(security_group)
+        self.clients("neutron").delete_security_group.assert_called_once_with(
+            security_group["security_group"]["id"])
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "neutron.delete_security_group")
+
+    def test_update_security_group(self):
+        scenario = utils.NeutronScenario()
+
+        security_group = {"security_group": {"id": "security-group-id",
+                                             "description": "Not updated"}}
+        expected_security_group = {
+            "security_group": {"id": "security-group-id",
+                               "description": "Updated"}
+        }
+        security_group_update_args = {"description": "Updated"}
+        security_group_update_data = {
+            "security_group": security_group_update_args}
+        self.clients("neutron").update_security_group = mock.Mock(
+            return_value=expected_security_group)
+        result_security_group = scenario._update_security_group(
+            security_group, **security_group_update_args)
+        self.clients("neutron").update_security_group.assert_called_once_with(
+            security_group["security_group"]["id"], security_group_update_data)
+        self.assertEqual(result_security_group, expected_security_group)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "neutron.update_security_group")
 
 
 class NeutronScenarioFunctionalTestCase(test.FakeClientsScenarioTestCase):
@@ -656,7 +812,7 @@ class NeutronLoadbalancerScenarioTestCase(test.ScenarioTestCase):
         pool = {"pool": {"id": "pool-id"}}
         pool_create_args = pool_create_args or {}
         if pool_create_args.get("name") is None:
-            neutron_scenario._generate_random_name = mock.Mock(
+            neutron_scenario.generate_random_name = mock.Mock(
                 return_value="random_name")
         self.clients("neutron").create_pool.return_value = pool
         args = {"lb_method": "ROUND_ROBIN", "protocol": "HTTP",
@@ -680,12 +836,12 @@ class NeutronLoadbalancerScenarioTestCase(test.ScenarioTestCase):
     )
     @ddt.unpack
     def test__create_v1_vip(self, vip_create_args=None):
-        neutron_scenario = utils.NeutronScenario()
+        neutron_scenario = utils.NeutronScenario(self.context)
         vip = {"vip": {"id": "vip-id"}}
         pool = {"pool": {"id": "pool-id", "subnet_id": "subnet-id"}}
         vip_create_args = vip_create_args or {}
         if vip_create_args.get("name") is None:
-            neutron_scenario._generate_random_name = mock.Mock(
+            neutron_scenario.generate_random_name = mock.Mock(
                 return_value="random_name")
         self.clients("neutron").create_vip.return_value = vip
         args = {"protocol_port": 80, "protocol": "HTTP", "name": "random_name",
@@ -725,3 +881,69 @@ class NeutronLoadbalancerScenarioTestCase(test.ScenarioTestCase):
         mock_get_network_id.assert_called_once_with(floating_network)
         self._test_atomic_action_timer(neutron_scenario.atomic_actions(),
                                        "neutron.create_floating_ip")
+
+    @ddt.data(
+        {},
+        {"healthmonitor_create_args": {}},
+        {"healthmonitor_create_args": {"type": "TCP"}},
+        {"atomic_action": False},
+        {"atomic_action": False,
+         "healthmonitor_create_args": {"type": "TCP"}},
+        {"healthmonitor_create_args": {},
+         "atomic_action": False},
+    )
+    @ddt.unpack
+    def test__create_v1_healthmonitor(self, atomic_action=True,
+                                      healthmonitor_create_args=None):
+        neutron_scenario = utils.NeutronScenario()
+        hm = {"health_monitor": {"id": "hm-id"}}
+        healthmonitor_create_args = healthmonitor_create_args or {}
+        self.clients("neutron").create_health_monitor.return_value = hm
+        args = {"type": "PING", "delay": 20,
+                "timeout": 10, "max_retries": 3}
+        args.update(healthmonitor_create_args)
+        expected_hm_data = {"health_monitor": args}
+        resultant_hm = neutron_scenario._create_v1_healthmonitor(
+            atomic_action=atomic_action,
+            **healthmonitor_create_args)
+        self.assertEqual(resultant_hm, hm)
+        self.clients("neutron").create_health_monitor.assert_called_once_with(
+            expected_hm_data)
+        if atomic_action:
+            self._test_atomic_action_timer(
+                neutron_scenario.atomic_actions(),
+                "neutron.create_healthmonitor")
+
+    def test_list_v1_healthmonitors(self):
+        scenario = utils.NeutronScenario()
+        hm_list = []
+        hm_dict = {"health_monitors": hm_list}
+        self.clients("neutron").list_health_monitors.return_value = hm_dict
+        return_hm_dict = scenario._list_v1_healthmonitors()
+        self.assertEqual(hm_dict, return_hm_dict)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "neutron.list_healthmonitors")
+
+    def test_delete_v1_healthmonitor(self):
+        scenario = utils.NeutronScenario()
+        healthmonitor = {"health_monitor": {"id": "fake-id"}}
+        scenario._delete_v1_healthmonitor(healthmonitor["health_monitor"])
+        self.clients("neutron").delete_health_monitor.assert_called_once_with(
+            healthmonitor["health_monitor"]["id"])
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "neutron.delete_healthmonitor")
+
+    def test_update_healthmonitor(self):
+        scenario = utils.NeutronScenario()
+        expected_hm = {"health_monitor": {"admin_state_up": False}}
+        mock_update = self.clients("neutron").update_health_monitor
+        mock_update.return_value = expected_hm
+        hm = {"health_monitor": {"id": "pool-id"}}
+        healthmonitor_update_args = {"admin_state_up": False}
+        result_hm = scenario._update_v1_healthmonitor(
+            hm, **healthmonitor_update_args)
+        self.assertEqual(result_hm, expected_hm)
+        mock_update.assert_called_once_with(
+            hm["health_monitor"]["id"], expected_hm)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "neutron.update_healthmonitor")

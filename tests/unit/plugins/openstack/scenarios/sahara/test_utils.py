@@ -41,8 +41,10 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
     def setUp(self):
         super(SaharaScenarioTestCase, self).setUp()
 
-        CONF.set_override("sahara_cluster_check_interval", 0, "benchmark")
-        CONF.set_override("sahara_job_check_interval", 0, "benchmark")
+        CONF.set_override("sahara_cluster_check_interval", 0, "benchmark",
+                          enforce_type=True)
+        CONF.set_override("sahara_job_check_interval", 0, "benchmark",
+                          enforce_type=True)
 
     def test_list_node_group_templates(self):
         ngts = []
@@ -55,12 +57,12 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "sahara.list_node_group_templates")
 
-    @mock.patch(SAHARA_UTILS + ".SaharaScenario._generate_random_name",
+    @mock.patch(SAHARA_UTILS + ".SaharaScenario.generate_random_name",
                 return_value="random_name")
     @mock.patch(SAHARA_UTILS + ".sahara_consts")
     def test_create_node_group_templates(
             self, mock_sahara_consts,
-            mock__generate_random_name):
+            mock_generate_random_name):
 
         scenario = utils.SaharaScenario(self.context)
         mock_processes = {
@@ -121,11 +123,11 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "sahara.delete_node_group_template")
 
-    @mock.patch(SAHARA_UTILS + ".SaharaScenario._generate_random_name",
+    @mock.patch(SAHARA_UTILS + ".SaharaScenario.generate_random_name",
                 return_value="random_name")
     @mock.patch(SAHARA_UTILS + ".sahara_consts")
     def test_launch_cluster(self, mock_sahara_consts,
-                            mock__generate_random_name):
+                            mock_generate_random_name):
 
         self.context.update({
             "tenant": {
@@ -169,8 +171,6 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
                 "flavor_id": "test_flavor",
                 "node_processes": ["p1"],
                 "floating_ip_pool": floating_ip_pool_uuid,
-                "volumes_per_node": 5,
-                "volumes_size": 10,
                 "count": 1,
                 "auto_security_group": True,
                 "security_groups": ["g1", "g2"],
@@ -192,11 +192,11 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
         mock_sahara_consts.NODE_PROCESSES = mock_processes
         mock_sahara_consts.REPLICATION_CONFIGS = mock_configs
 
-        self.clients("sahara").clusters.create.return_value = mock.MagicMock(
-            id="test_cluster_id")
+        self.clients("sahara").clusters.create.return_value.id = (
+            "test_cluster_id")
 
-        self.clients("sahara").clusters.get.return_value = mock.MagicMock(
-            status="active")
+        self.clients("sahara").clusters.get.return_value.status = (
+            "active")
 
         scenario._launch_cluster(
             plugin_name="test_plugin",
@@ -226,11 +226,127 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "sahara.launch_cluster")
 
-    @mock.patch(SAHARA_UTILS + ".SaharaScenario._generate_random_name",
+    @mock.patch(SAHARA_UTILS + ".SaharaScenario.generate_random_name",
+                return_value="random_name")
+    @mock.patch(SAHARA_UTILS + ".sahara_consts")
+    def test_launch_cluster_with_proxy(self, mock_sahara_consts,
+                                       mock_generate_random_name):
+
+        context = {
+            "tenant": {
+                "networks": [
+                    {
+                        "id": "test_neutron_id",
+                        "router_id": "test_router_id"
+                    }
+                ]
+            }
+        }
+
+        self.clients("services").values.return_value = [
+            consts.Service.NEUTRON
+        ]
+
+        scenario = utils.SaharaScenario(context=context)
+
+        mock_processes = {
+            "test_plugin": {
+                "test_version": {
+                    "master": ["p1"],
+                    "worker": ["p2"]
+                }
+            }
+        }
+
+        mock_configs = {
+            "test_plugin": {
+                "test_version": {
+                    "target": "HDFS",
+                    "config_name": "dfs.replication"
+                }
+            }
+        }
+
+        floating_ip_pool_uuid = uuidutils.generate_uuid()
+        node_groups = [
+            {
+                "name": "master-ng",
+                "flavor_id": "test_flavor",
+                "node_processes": ["p1"],
+                "floating_ip_pool": floating_ip_pool_uuid,
+                "count": 1,
+                "auto_security_group": True,
+                "security_groups": ["g1", "g2"],
+                "node_configs": {"HDFS": {"local_config": "local_value"}},
+                "is_proxy_gateway": True
+            }, {
+                "name": "worker-ng",
+                "flavor_id": "test_flavor",
+                "node_processes": ["p2"],
+                "volumes_per_node": 5,
+                "volumes_size": 10,
+                "count": 40,
+                "auto_security_group": True,
+                "security_groups": ["g1", "g2"],
+                "node_configs": {"HDFS": {"local_config": "local_value"}},
+            }, {
+                "name": "proxy-ng",
+                "flavor_id": "test_flavor",
+                "node_processes": ["p2"],
+                "floating_ip_pool": floating_ip_pool_uuid,
+                "volumes_per_node": 5,
+                "volumes_size": 10,
+                "count": 2,
+                "auto_security_group": True,
+                "security_groups": ["g1", "g2"],
+                "node_configs": {"HDFS": {"local_config": "local_value"}},
+                "is_proxy_gateway": True
+            }
+        ]
+
+        mock_sahara_consts.NODE_PROCESSES = mock_processes
+        mock_sahara_consts.REPLICATION_CONFIGS = mock_configs
+
+        self.clients("sahara").clusters.create.return_value = mock.MagicMock(
+            id="test_cluster_id")
+
+        self.clients("sahara").clusters.get.return_value = mock.MagicMock(
+            status="active")
+
+        scenario._launch_cluster(
+            plugin_name="test_plugin",
+            hadoop_version="test_version",
+            flavor_id="test_flavor",
+            image_id="test_image",
+            floating_ip_pool=floating_ip_pool_uuid,
+            volumes_per_node=5,
+            volumes_size=10,
+            auto_security_group=True,
+            security_groups=["g1", "g2"],
+            workers_count=42,
+            node_configs={"HDFS": {"local_config": "local_value"}},
+            enable_proxy=True
+        )
+
+        self.clients("sahara").clusters.create.assert_called_once_with(
+            name="random_name",
+            plugin_name="test_plugin",
+            hadoop_version="test_version",
+            node_groups=node_groups,
+            default_image_id="test_image",
+            cluster_configs={"HDFS": {"dfs.replication": 3}},
+            net_id="test_neutron_id",
+            anti_affinity=None
+        )
+
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "sahara.launch_cluster")
+
+    @mock.patch(SAHARA_UTILS + ".SaharaScenario.generate_random_name",
                 return_value="random_name")
     @mock.patch(SAHARA_UTILS + ".sahara_consts")
     def test_launch_cluster_error(self, mock_sahara_consts,
-                                  mock__generate_random_name):
+                                  mock_generate_random_name):
 
         scenario = utils.SaharaScenario(self.context)
         mock_processes = {
@@ -315,13 +431,15 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "sahara.delete_cluster")
 
-    @mock.patch(SAHARA_UTILS + ".SaharaScenario._generate_random_name",
+    @mock.patch(SAHARA_UTILS + ".SaharaScenario.generate_random_name",
                 return_value="42")
-    def test_create_output_ds(self, mock__generate_random_name):
+    def test_create_output_ds(self, mock_generate_random_name):
         self.context.update({
-            "sahara_output_conf": {
-                "output_type": "hdfs",
-                "output_url_prefix": "hdfs://test_out/"
+            "sahara": {
+                "output_conf": {
+                    "output_type": "hdfs",
+                    "output_url_prefix": "hdfs://test_out/"
+                }
             }
         })
 
@@ -335,13 +453,15 @@ class SaharaScenarioTestCase(test.ScenarioTestCase):
             url="hdfs://test_out/42"
         )
 
-    @mock.patch(SAHARA_UTILS + ".SaharaScenario._generate_random_name",
+    @mock.patch(SAHARA_UTILS + ".SaharaScenario.generate_random_name",
                 return_value="42")
-    def test_create_output_ds_swift(self, mock__generate_random_name):
+    def test_create_output_ds_swift(self, mock_generate_random_name):
         self.context.update({
-            "sahara_output_conf": {
-                "output_type": "swift",
-                "output_url_prefix": "swift://test_out/"
+            "sahara": {
+                "output_conf": {
+                    "output_type": "swift",
+                    "output_url_prefix": "swift://test_out/"
+                }
             }
         })
 

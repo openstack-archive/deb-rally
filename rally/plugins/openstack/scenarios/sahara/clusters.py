@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from rally.common import log as logging
+from rally.common import logging
 from rally import consts
 from rally.plugins.openstack import scenario
 from rally.plugins.openstack.scenarios.sahara import utils
@@ -41,7 +41,8 @@ class SaharaClusters(utils.SaharaScenario):
                                   volumes_size=None, auto_security_group=None,
                                   security_groups=None, node_configs=None,
                                   cluster_configs=None,
-                                  enable_anti_affinity=False):
+                                  enable_anti_affinity=False,
+                                  enable_proxy=False):
         """Launch and delete a Sahara Cluster.
 
         This scenario launches a Hadoop cluster, waits until it becomes
@@ -56,7 +57,7 @@ class SaharaClusters(utils.SaharaScenario):
         :param floating_ip_pool: floating ip pool name from which Floating
                                  IPs will be allocated. Sahara will determine
                                  automatically how to treat this depending on
-                                 it's own configurations. Defaults to None
+                                 its own configurations. Defaults to None
                                  because in some cases Sahara may work w/o
                                  Floating IPs.
         :param volumes_per_node: number of Cinder volumes that will be
@@ -74,9 +75,11 @@ class SaharaClusters(utils.SaharaScenario):
                                 Cluster
         :param enable_anti_affinity: If set to true the vms will be scheduled
                                      one per compute node.
+        :param enable_proxy: Use Master Node of a Cluster as a Proxy node and
+                             do not assign floating ips to workers.
         """
 
-        image_id = self.context["tenant"]["sahara_image"]
+        image_id = self.context["tenant"]["sahara"]["image"]
 
         LOG.debug("Using Image: %s" % image_id)
 
@@ -93,7 +96,8 @@ class SaharaClusters(utils.SaharaScenario):
             security_groups=security_groups,
             node_configs=node_configs,
             cluster_configs=cluster_configs,
-            enable_anti_affinity=enable_anti_affinity)
+            enable_anti_affinity=enable_anti_affinity,
+            enable_proxy=enable_proxy)
 
         self._delete_cluster(cluster)
 
@@ -110,7 +114,8 @@ class SaharaClusters(utils.SaharaScenario):
                                     auto_security_group=None,
                                     security_groups=None, node_configs=None,
                                     cluster_configs=None,
-                                    enable_anti_affinity=False):
+                                    enable_anti_affinity=False,
+                                    enable_proxy=False):
         """Launch, scale and delete a Sahara Cluster.
 
         This scenario launches a Hadoop cluster, waits until it becomes
@@ -130,7 +135,7 @@ class SaharaClusters(utils.SaharaScenario):
         :param floating_ip_pool: floating ip pool name from which Floating
                                  IPs will be allocated. Sahara will determine
                                  automatically how to treat this depending on
-                                 it's own configurations. Defaults to None
+                                 its own configurations. Defaults to None
                                  because in some cases Sahara may work w/o
                                  Floating IPs.
         :param neutron_net_id: id of a Neutron network that will be used
@@ -151,9 +156,11 @@ class SaharaClusters(utils.SaharaScenario):
                                 Cluster
         :param enable_anti_affinity: If set to true the vms will be scheduled
                                      one per compute node.
+        :param enable_proxy: Use Master Node of a Cluster as a Proxy node and
+                             do not assign floating ips to workers.
         """
 
-        image_id = self.context["tenant"]["sahara_image"]
+        image_id = self.context["tenant"]["sahara"]["image"]
 
         LOG.debug("Using Image: %s" % image_id)
 
@@ -170,7 +177,8 @@ class SaharaClusters(utils.SaharaScenario):
             security_groups=security_groups,
             node_configs=node_configs,
             cluster_configs=cluster_configs,
-            enable_anti_affinity=enable_anti_affinity)
+            enable_anti_affinity=enable_anti_affinity,
+            enable_proxy=enable_proxy)
 
         for delta in deltas:
             # The Cluster is fetched every time so that its node groups have

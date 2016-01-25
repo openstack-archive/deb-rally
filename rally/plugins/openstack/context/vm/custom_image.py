@@ -19,7 +19,7 @@ import six
 
 from rally.common import broker
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils
 from rally import consts
 from rally import osclients
@@ -105,7 +105,7 @@ class BaseCustomImageGenerator(context.Context):
         "workers": 1
     }
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `custom_image`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `custom_image`"))
     def setup(self):
         """Creates custom image(s) with preinstalled applications.
 
@@ -145,7 +145,7 @@ class BaseCustomImageGenerator(context.Context):
     def create_one_image(self, user, **kwargs):
         """Create one image for the user."""
 
-        clients = osclients.Clients(user["endpoint"])
+        clients = osclients.Clients(user["credential"])
 
         image_id = types.ImageResourceType.transform(
             clients=clients, resource_config=self.config["image"])
@@ -155,7 +155,6 @@ class BaseCustomImageGenerator(context.Context):
         vm_scenario = vmtasks.VMTasks(self.context, clients=clients)
 
         server, fip = vm_scenario._boot_server_with_fip(
-            name=vm_scenario._generate_random_name("rally_ctx_custom_image_"),
             image=image_id, flavor=flavor_id,
             floating_network=self.config.get("floating_network"),
             userdata=self.config.get("userdata"),
@@ -180,13 +179,13 @@ class BaseCustomImageGenerator(context.Context):
     def make_image_public(self, custom_image):
         """Make the image available publicly."""
 
-        admin_clients = osclients.Clients(self.context["admin"]["endpoint"])
+        admin_clients = osclients.Clients(self.context["admin"]["credential"])
 
         LOG.debug("Making image %r public", custom_image["id"])
         admin_clients.glance().images.get(
             custom_image["id"]).update(is_public=True)
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `custom_image`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `custom_image`"))
     def cleanup(self):
         """Delete created custom image(s)."""
 
@@ -214,7 +213,7 @@ class BaseCustomImageGenerator(context.Context):
     def delete_one_image(self, user, custom_image):
         """Delete the image created for the user and tenant."""
 
-        clients = osclients.Clients(user["endpoint"])
+        clients = osclients.Clients(user["credential"])
 
         nova_scenario = nova_utils.NovaScenario(
             context=self.context, clients=clients)
@@ -226,8 +225,8 @@ class BaseCustomImageGenerator(context.Context):
                 custom_image["id"])
             nova_scenario._delete_image(custom_image)
 
-    @utils.log_task_wrapper(LOG.info,
-                            _("Custom image context: customizing"))
+    @logging.log_task_wrapper(LOG.info,
+                              _("Custom image context: customizing"))
     def customize_image(self, server, ip, user):
         return self._customize_image(server, ip, user)
 

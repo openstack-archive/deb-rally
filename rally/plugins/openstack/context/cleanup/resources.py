@@ -17,10 +17,13 @@ from boto import exception as boto_exception
 from neutronclient.common import exceptions as neutron_exceptions
 from saharaclient.api import base as saharaclient_base
 
-from rally.common import log as logging
+from rally.common import logging
+from rally.common.plugin import discover
+from rally.common import utils
 from rally.plugins.openstack.context.cleanup import base
-from rally.plugins.openstack import scenario
+from rally.plugins.openstack.scenarios.fuel import utils as futils
 from rally.plugins.openstack.scenarios.keystone import utils as kutils
+from rally.plugins.openstack.scenarios.nova import utils as nova_utils
 from rally.plugins.openstack.wrappers import keystone as keystone_wrapper
 
 LOG = logging.getLogger(__name__)
@@ -126,16 +129,24 @@ class NovaFloatingIpsBulk(SynchronizedDeletion, base.ResourceManager):
 
     def list(self):
         return [floating_ip for floating_ip in self._manager().list()
-                if floating_ip.pool.startswith("rally_fip_pool_")]
+                if utils.name_matches_object(floating_ip.pool,
+                                             nova_utils.NovaScenario)]
 
 
 @base.resource("nova", "networks", order=next(_nova_order),
-               admin_required=True)
+               admin_required=True, tenant_resource=True)
 class NovaNetworks(SynchronizedDeletion, base.ResourceManager):
 
     def list(self):
+        # NOTE(stpierre): any plugin can create a nova network via the
+        # network wrapper, and that network's name will be created
+        # according to its owner's random name generation
+        # parameters. so we need to check if there are nova networks
+        # whose name pattern matches those of any loaded plugin that
+        # implements RandomNameGeneratorMixin
+        classes = list(discover.itersubclasses(utils.RandomNameGeneratorMixin))
         return [net for net in self._manager().list()
-                if net.label.startswith("rally_novanet")]
+                if utils.name_matches_object(net.label, *classes)]
 
 
 # EC2
@@ -218,6 +229,24 @@ class NeutronLbaasV1Mixin(NeutronMixin):
         return []
 
 
+@base.resource("neutron", "vip", order=next(_neutron_order),
+               tenant_resource=True)
+class NeutronV1Vip(NeutronLbaasV1Mixin):
+    pass
+
+
+@base.resource("neutron", "health_monitor", order=next(_neutron_order),
+               tenant_resource=True)
+class NeutronV1Healthmonitor(NeutronLbaasV1Mixin):
+    pass
+
+
+@base.resource("neutron", "pool", order=next(_neutron_order),
+               tenant_resource=True)
+class NeutronV1Pool(NeutronLbaasV1Mixin):
+    pass
+
+
 @base.resource("neutron", "port", order=next(_neutron_order),
                tenant_resource=True)
 class NeutronPort(NeutronMixin):
@@ -245,18 +274,6 @@ class NeutronRouter(NeutronMixin):
     pass
 
 
-@base.resource("neutron", "vip", order=next(_neutron_order),
-               tenant_resource=True)
-class NeutronV1Vip(NeutronLbaasV1Mixin):
-    pass
-
-
-@base.resource("neutron", "pool", order=next(_neutron_order),
-               tenant_resource=True)
-class NeutronV1Pool(NeutronLbaasV1Mixin):
-    pass
-
-
 @base.resource("neutron", "subnet", order=next(_neutron_order),
                tenant_resource=True)
 class NeutronSubnet(NeutronMixin):
@@ -272,6 +289,12 @@ class NeutronNetwork(NeutronMixin):
 @base.resource("neutron", "floatingip", order=next(_neutron_order),
                tenant_resource=True)
 class NeutronFloatingIP(NeutronMixin):
+    pass
+
+
+@base.resource("neutron", "security_group", order=next(_neutron_order),
+               tenant_resource=True)
+class NeutronSecurityGroup(NeutronMixin):
     pass
 
 
@@ -445,14 +468,27 @@ class ZaqarQueues(SynchronizedDeletion, base.ResourceManager):
 _designate_order = get_order(900)
 
 
-@base.resource("designate", "domains", order=next(_designate_order))
-class Designate(SynchronizedDeletion, base.ResourceManager):
+class DesignateResource(SynchronizedDeletion, base.ResourceManager):
+    def _manager(self):
+        # NOTE: service name contains version, so we should split them
+        service_name, version = self._service.split("_v")
+        return getattr(getattr(self.user, service_name)(version),
+                       self._resource)
+
+
+@base.resource("designate_v1", "domains", order=next(_designate_order))
+class DesignateDomain(DesignateResource):
     pass
 
 
-@base.resource("designate", "servers", order=next(_designate_order),
+@base.resource("designate_v2", "zones", order=next(_designate_order))
+class DesignateZones(DesignateResource):
+    pass
+
+
+@base.resource("designate_v1", "servers", order=next(_designate_order),
                admin_required=True, perform_for_admin_only=True)
-class DesignateServer(SynchronizedDeletion, base.ResourceManager):
+class DesignateServer(DesignateResource):
     pass
 
 
@@ -518,7 +554,7 @@ _murano_order = get_order(1200)
 
 @base.resource("murano", "environments", tenant_resource=True,
                order=next(_murano_order))
-class MuranoEnvironments(base.ResourceManager):
+class MuranoEnvironments(SynchronizedDeletion, base.ResourceManager):
     pass
 
 
@@ -561,8 +597,8 @@ class FuelEnvironment(base.ResourceManager):
 
     def list(self):
         return [env for env in self._manager().list()
-                if env["name"].startswith(
-                    scenario.OpenStackScenario.RESOURCE_NAME_PREFIX)]
+                if utils.name_matches_object(env["name"],
+                                             futils.FuelScenario)]
 
 
 # KEYSTONE

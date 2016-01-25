@@ -43,6 +43,23 @@ class AtomicActionTestCase(test.TestCase):
                          inst.atomic_actions())
 
     @mock.patch("time.time", side_effect=[1, 3])
+    def test_action_timer_context_with_exception(self, mock_time):
+        inst = atomic.ActionTimerMixin()
+
+        class TestException(Exception):
+            pass
+
+        try:
+            with atomic.ActionTimer(inst, "test"):
+                raise TestException("test")
+        except TestException:
+            pass
+
+        expected = [("test", 2)]
+        self.assertEqual(costilius.OrderedDict(expected),
+                         inst.atomic_actions())
+
+    @mock.patch("time.time", side_effect=[1, 3])
     def test_action_timer_decorator(self, mock_time):
 
         class Some(atomic.ActionTimerMixin):
@@ -53,5 +70,56 @@ class AtomicActionTestCase(test.TestCase):
 
         inst = Some()
         self.assertEqual(5, inst.some_func(2, 3))
+        self.assertEqual(costilius.OrderedDict({"some": 2}),
+                         inst.atomic_actions())
+
+    @mock.patch("time.time", side_effect=[1, 3])
+    def test_action_timer_decorator_with_exception(self, mock_time):
+
+        class TestException(Exception):
+            pass
+
+        class TestTimer(atomic.ActionTimerMixin):
+
+            @atomic.action_timer("test")
+            def some_func(self):
+                raise TestException("test")
+
+        inst = TestTimer()
+        self.assertRaises(TestException, inst.some_func)
+        self.assertEqual(costilius.OrderedDict({"test": 2}),
+                         inst.atomic_actions())
+
+    @mock.patch("time.time", side_effect=[1, 3, 1, 3])
+    def test_optional_action_timer_decorator(self, mock_time):
+
+        class TestAtomicTimer(atomic.ActionTimerMixin):
+
+            @atomic.optional_action_timer("some")
+            def some_func(self, a, b):
+                return a + b
+
+            @atomic.optional_action_timer("some", argument_name="foo",
+                                          default=False)
+            def other_func(self, a, b):
+                return a + b
+
+        inst = TestAtomicTimer()
+        self.assertEqual(5, inst.some_func(2, 3))
+        self.assertEqual(costilius.OrderedDict({"some": 2}),
+                         inst.atomic_actions())
+
+        inst = TestAtomicTimer()
+        self.assertEqual(5, inst.some_func(2, 3, atomic_action=False))
+        self.assertEqual(costilius.OrderedDict(),
+                         inst.atomic_actions())
+
+        inst = TestAtomicTimer()
+        self.assertEqual(5, inst.other_func(2, 3))
+        self.assertEqual(costilius.OrderedDict(),
+                         inst.atomic_actions())
+
+        inst = TestAtomicTimer()
+        self.assertEqual(5, inst.other_func(2, 3, foo=True))
         self.assertEqual(costilius.OrderedDict({"some": 2}),
                          inst.atomic_actions())

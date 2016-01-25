@@ -17,6 +17,7 @@ import collections
 import json
 
 from rally.common import objects
+from rally.common.plugin import plugin
 from rally.task.processing import charts
 from rally.ui import utils as ui_utils
 
@@ -29,26 +30,53 @@ def _process_scenario(data, pos):
     atomic_pie = charts.AtomicAvgChart(data["info"])
     atomic_area = charts.AtomicStackedAreaChart(data["info"])
     atomic_hist = charts.AtomicHistogramChart(data["info"])
-    output_area = charts.OutputStackedAreaChart(data["info"])
 
     errors = []
     output_errors = []
+    additive_output_charts = []
+    complete_output = []
     for idx, itr in enumerate(data["iterations"]):
         if itr["error"]:
             typ, msg, trace = itr["error"]
             errors.append({"iteration": idx,
                            "type": typ, "message": msg, "traceback": trace})
 
-        if itr["scenario_output"]["errors"]:
-            output_errors.append((idx, itr["scenario_output"]["errors"]))
+        for i, additive in enumerate(itr["output"]["additive"]):
+            try:
+                additive_output_charts[i].add_iteration(additive["data"])
+            except IndexError:
+                data_ = {}
+                keys = []
+                for key, value in additive["data"]:
+                    if key not in data:
+                        data_[key] = []
+                        keys.append(key)
+                    data_[key].append(value)
+
+                info = data["info"].copy()
+                info["output_names"] = keys
+                chart_cls = plugin.Plugin.get(additive["chart_plugin"])
+                chart = chart_cls(info, title=additive["title"],
+                                  description=additive["description"])
+                chart.add_iteration(additive["data"])
+                additive_output_charts.append(chart)
+
+        complete_charts = []
+        for complete in itr["output"]["complete"]:
+            complete_chart = dict(complete)
+            chart_cls = plugin.Plugin.get(complete_chart.pop("chart_plugin"))
+            complete_chart["widget"] = chart_cls.widget
+            complete_charts.append(complete_chart)
+        complete_output.append(complete_charts)
 
         for chart in (main_area, main_hist, main_stat, load_profile,
-                      atomic_pie, atomic_area, atomic_hist, output_area):
+                      atomic_pie, atomic_area, atomic_hist):
             chart.add_iteration(itr)
 
     kw = data["key"]["kw"]
     cls, method = data["key"]["name"].split(".")
-
+    additive_output = [chart.render() for chart in additive_output_charts]
+    iterations_count = data["info"]["iterations_count"]
     return {
         "cls": cls,
         "met": method,
@@ -61,20 +89,21 @@ def _process_scenario(data, pos):
             "pie": [("success", (data["info"]["iterations_count"]
                                  - len(errors))),
                     ("errors", len(errors))],
-            "histogram": main_hist.render()[0]},
+            "histogram": main_hist.render()},
         "load_profile": load_profile.render(),
         "atomic": {"histogram": atomic_hist.render(),
                    "iter": atomic_area.render(),
                    "pie": atomic_pie.render()},
         "table": main_stat.render(),
-        "output": output_area.render(),
+        "additive_output": additive_output,
+        "complete_output": complete_output,
         "output_errors": output_errors,
         "errors": errors,
         "load_duration": data["info"]["load_duration"],
         "full_duration": data["info"]["full_duration"],
         "sla": data["sla"],
         "sla_success": all([s["success"] for s in data["sla"]]),
-        "iterations_count": data["info"]["iterations_count"],
+        "iterations_count": iterations_count,
     }
 
 
@@ -90,10 +119,11 @@ def _process_tasks(tasks_results):
         tasks.append(_process_scenario(scenario, position[name]))
 
     source = json.dumps(source_dict, indent=2, sort_keys=True)
-    return source, sorted(tasks, key=lambda r: r["cls"] + r["name"])
+    return source, sorted(tasks, key=lambda r: (r["cls"], r["met"],
+                                                int(r["pos"])))
 
 
-def plot(tasks_results):
+def plot(tasks_results, include_libs=False):
     # NOTE(amaretskiy): Transform generic results into extended
     #   results, so they can be processed by charts classes
     extended_results = []
@@ -114,6 +144,7 @@ def plot(tasks_results):
         extended_results.extend(
             objects.Task.extend_results([generic]))
 
-    template = ui_utils.get_template("task/report.mako")
+    template = ui_utils.get_template("task/report.html")
     source, data = _process_tasks(extended_results)
-    return template.render(source=json.dumps(source), data=json.dumps(data))
+    return template.render(source=json.dumps(source), data=json.dumps(data),
+                           include_libs=include_libs)

@@ -14,38 +14,43 @@
 
 import abc
 import bisect
-import copy
 import math
 
 import six
 
 from rally.common import costilius
+from rally.common.plugin import plugin
 from rally.common import streaming_algorithms as streaming
 from rally.task.processing import utils
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Chart(object):
+@plugin.configure(name="base_output_chart")
+class Chart(plugin.Plugin):
     """Base class for charts."""
 
-    def __init__(self, benchmark_info, zipped_size=1000):
+    @abc.abstractproperty
+    def widget(self):
+        """Widget name to display this chart by JavaScript."""
+
+    def __init__(self, workload_info, zipped_size=1000):
         """Setup initial values.
 
-        :param benchmark_info: dict, generalized info about iterations.
+        :param workload_info: dict, generalized info about iterations.
                                The most important value is `iterations_count'
                                that should have int value of total data size
         :param zipped_size: int maximum number of points on scale
         """
         self._data = costilius.OrderedDict()  # Container for results
-        self._benchmark_info = benchmark_info
-        self.base_size = benchmark_info.get("iterations_count", 0)
+        self._workload_info = workload_info
+        self.base_size = workload_info.get("iterations_count", 0)
         self.zipped_size = zipped_size
 
     def add_iteration(self, iteration):
         """Add iteration data.
 
         This method must be called for each iteration.
-        If overriden, this method must use streaming data processing,
+        If overridden, this method must use streaming data processing,
         so chart instance could process unlimited number of iterations,
         with low memory usage.
         """
@@ -67,7 +72,7 @@ class Chart(object):
         due to failures, this method must be used in all cases
         related to atomic actions processing.
         """
-        for name in self._benchmark_info["atomic"]:
+        for name in self._workload_info["atomic"]:
             iteration["atomic_actions"].setdefault(name, 0)
         return iteration
 
@@ -78,27 +83,31 @@ class Chart(object):
 
 class MainStackedAreaChart(Chart):
 
+    widget = "StackedArea"
+
     def _map_iteration_values(self, iteration):
         if iteration["error"]:
             result = [("duration", 0), ("idle_duration", 0)]
-            if self._benchmark_info["iterations_failed"]:
+            if self._workload_info["iterations_failed"]:
                 result.append(
                     ("failed_duration",
                      iteration["duration"] + iteration["idle_duration"]))
         else:
             result = [("duration", iteration["duration"]),
                       ("idle_duration", iteration["idle_duration"])]
-            if self._benchmark_info["iterations_failed"]:
+            if self._workload_info["iterations_failed"]:
                 result.append(("failed_duration", 0))
         return result
 
 
 class AtomicStackedAreaChart(Chart):
 
+    widget = "StackedArea"
+
     def _map_iteration_values(self, iteration):
         iteration = self._fix_atomic_actions(iteration)
         atomics = list(iteration["atomic_actions"].items())
-        if self._benchmark_info["iterations_failed"]:
+        if self._workload_info["iterations_failed"]:
             if iteration["error"]:
                 failed_duration = (
                     iteration["duration"] + iteration["idle_duration"]
@@ -109,15 +118,10 @@ class AtomicStackedAreaChart(Chart):
         return atomics
 
 
-class OutputStackedAreaChart(Chart):
-
-    def _map_iteration_values(self, iteration):
-        return [(name, iteration["scenario_output"]["data"].get(name, 0))
-                for name in self._benchmark_info["output_names"]]
-
-
 class AvgChart(Chart):
     """Base class for charts with average results."""
+
+    widget = "Pie"
 
     def add_iteration(self, iteration):
         for name, value in self._map_iteration_values(iteration):
@@ -139,18 +143,20 @@ class AtomicAvgChart(AvgChart):
 class LoadProfileChart(Chart):
     """Chart for parallel durations."""
 
-    def __init__(self, benchmark_info, name="parallel iterations",
+    widget = "StackedArea"
+
+    def __init__(self, workload_info, name="parallel iterations",
                  scale=200):
         """Setup chart with graph name and scale.
 
-        :benchmark_info:  dict, generalized info about iterations
+        :workload_info:  dict, generalized info about iterations
         :param name: str name for X axis
         :param scale: int number of X points
         """
-        super(LoadProfileChart, self).__init__(benchmark_info)
+        super(LoadProfileChart, self).__init__(workload_info)
         self._name = name
-        self._duration = benchmark_info["load_duration"]
-        self._tstamp_start = benchmark_info["tstamp_start"]
+        self._duration = workload_info["load_duration"]
+        self._tstamp_start = workload_info["tstamp_start"]
 
         # NOTE(amaretskiy): Determine a chart `step' - duration between
         #   two X points, rounded with minimal accuracy (digits after point)
@@ -202,6 +208,8 @@ class HistogramChart(Chart):
     And each histogram has several data views.
     """
 
+    widget = "Histogram"
+
     def _init_views(self, min_value, max_value):
         """Generate initial data for each histogram view."""
         if not self.base_size:
@@ -214,9 +222,7 @@ class HistogramChart(Chart):
                 ("Sturges Formula",
                  int(math.ceil(math.log(self.base_size, 2) + 1))),
                 ("Rice Rule",
-                 int(math.ceil(2 * self.base_size ** (1.0 / 3)))),
-                ("One Half",
-                 int(math.ceil(self.base_size / 2.0)))]:
+                 int(math.ceil(2 * self.base_size ** (1.0 / 3))))]:
             bin_width = float(max_value - min_value) / bins
             x_axis = [min_value + (bin_width * x) for x in range(1, bins + 1)]
             views.append({"view": view, "bins": bins,
@@ -236,19 +242,26 @@ class HistogramChart(Chart):
     def render(self):
         data = []
         for name, hist in self._data.items():
-            data.append(
-                [{"key": name, "view": v["view"], "disabled": hist["disabled"],
-                  "values": [{"x": x, "y": y} for x, y in zip(v["x"], v["y"])]}
-                 for v in hist["views"]])
-        return data
+            for idx, v in enumerate(hist["views"]):
+                graph = {"key": name,
+                         "view": v["view"],
+                         "disabled": hist["disabled"],
+                         "values": [{"x": x, "y": y}
+                                    for x, y in zip(v["x"], v["y"])]}
+                try:
+                    data[idx].append(graph)
+                except IndexError:
+                    data.append([graph])
+        return {"data": data, "views": [{"id": i, "name": d[0]["view"]}
+                                        for i, d in enumerate(data)]}
 
 
 class MainHistogramChart(HistogramChart):
 
-    def __init__(self, benchmark_info):
-        super(MainHistogramChart, self).__init__(benchmark_info)
-        views = self._init_views(self._benchmark_info["min_duration"],
-                                 self._benchmark_info["max_duration"])
+    def __init__(self, workload_info):
+        super(MainHistogramChart, self).__init__(workload_info)
+        views = self._init_views(self._workload_info["min_duration"],
+                                 self._workload_info["max_duration"])
         self._data["task"] = {"views": views, "disabled": None}
 
     def _map_iteration_values(self, iteration):
@@ -257,9 +270,9 @@ class MainHistogramChart(HistogramChart):
 
 class AtomicHistogramChart(HistogramChart):
 
-    def __init__(self, benchmark_info):
-        super(AtomicHistogramChart, self).__init__(benchmark_info)
-        for i, atomic in enumerate(self._benchmark_info["atomic"].items()):
+    def __init__(self, workload_info):
+        super(AtomicHistogramChart, self).__init__(workload_info)
+        for i, atomic in enumerate(self._workload_info["atomic"].items()):
             name, value = atomic
             self._data[name] = {
                 "views": self._init_views(value["min_duration"],
@@ -271,65 +284,164 @@ class AtomicHistogramChart(HistogramChart):
         return list(iteration["atomic_actions"].items())
 
 
-class MainStatsTable(Chart):
+@six.add_metaclass(abc.ABCMeta)
+class Table(Chart):
+    """Base class for tables.
 
-    def _init_row(self, name, iterations_count):
+    Each Table subclass represents HTML table which can be easily rendered in
+    report. Subclasses are responsible for setting up both columns and rows:
+    columns are set simply by `columns' property (list of str columns names)
+    and rows must be initialized in _data property, with the following format:
+        self._data = {name: [streaming_ins, postprocess_func or None], ...}
+          where:
+            name - str name of table row parameter
+            streaming_ins - instance of streaming algorithm
+            postprocess_func - optional function that processes final result,
+                               None means usage of default self._round()
+        This can be done in __init__() or even in add_iteration().
+    """
 
-        def round_3(stream, no_result):
-            if no_result:
-                return "n/a"
-            return round(stream.result(), 3)
+    widget = "Table"
 
-        return [
-            ("Action", name),
-            ("Min (sec)", streaming.MinComputation(), round_3),
-            ("Median (sec)",
-             streaming.PercentileComputation(0.5, iterations_count), round_3),
-            ("90%ile (sec)",
-             streaming.PercentileComputation(0.9, iterations_count), round_3),
-            ("95%ile (sec)",
-             streaming.PercentileComputation(0.95, iterations_count), round_3),
-            ("Max (sec)", streaming.MaxComputation(), round_3),
-            ("Avg (sec)", streaming.MeanComputation(), round_3),
-            ("Success", streaming.MeanComputation(),
-             lambda stream, no_result: "%.1f%%" % (stream.result() * 100)),
-            ("Count", streaming.IncrementComputation(),
-             lambda x, no_result: x.result())
-        ]
+    @abc.abstractproperty
+    def columns(self):
+        """List of columns names."""
 
-    def __init__(self, benchmark_info, zipped_size=1000):
-        self.rows = list(benchmark_info["atomic"].keys())
-        self.rows.append("total")
-        self.rows_index = dict((name, i) for i, name in enumerate(self.rows))
-        self.table = [self._init_row(name, benchmark_info["iterations_count"])
-                      for name in self.rows]
+    def _round(self, ins, has_result):
+        """This is a default post-process function for table cell value.
 
-    def add_iteration(self, iteration):
-        data = copy.copy(iteration["atomic_actions"])
-        data["total"] = iteration["duration"]
+        :param ins: streaming_algorithms.StreamingAlgorithm subclass instance
+        :param has_result: bool, whether current row is effective
+        :returns: rounded float
+        :returns: str "n/a"
+        """
+        return round(ins.result(), 3) if has_result else "n/a"
 
-        for name, value in data.items():
-            index = self.rows_index[name]
-            self.table[index][-1][1].add(None)
-            if iteration["error"]:
-                self.table[index][-2][1].add(0)
-            else:
-                self.table[index][-2][1].add(1)
-                for elem in self.table[index][1:-2]:
-                    elem[1].add(value)
+    def _row_has_results(self, values):
+        """Determine whether row can be assumed as having values.
+
+        :param values: row values list
+                       [(StreamingAlgorithm, function or None), ...]
+        :returns: bool
+        """
+        for ins, fn in values:
+            if isinstance(ins, streaming.MinComputation):
+                return bool(ins.result())
+        return True
+
+    def get_rows(self):
+        """Collect rows values finally, after all data is processed.
+
+        :returns: [str_name, (float or str), (float or str), ...]
+        """
+        rows = []
+        for name, values in self._data.items():
+            row = [name]
+            has_result = self._row_has_results(values)
+            for ins, fn in values:
+                fn = fn or self._round
+                row.append(fn(ins, has_result))
+            rows.append(row)
+        return rows
 
     def render(self):
-        rows = []
+        return {"cols": self.columns, "rows": self.get_rows()}
 
-        for i in range(len(self.table)):
-            row = [self.table[i][0][1]]
-            # no results if all iterations failed
-            no_result = self.table[i][-2][1].result() == 0.0
-            row.extend(x[2](x[1], no_result) for x in self.table[i][1:])
-            rows.append(row)
 
-        return {"cols": list(map(lambda x: x[0], self.table[0])),
-                "rows": rows}
+class MainStatsTable(Table):
+
+    columns = ["Action", "Min (sec)", "Median (sec)", "90%ile (sec)",
+               "95%ile (sec)", "Max (sec)", "Avg (sec)", "Success", "Count"]
+
+    def __init__(self, *args, **kwargs):
+        super(MainStatsTable, self).__init__(*args, **kwargs)
+        iters_num = self._workload_info["iterations_count"]
+        for name in (list(self._workload_info["atomic"].keys()) + ["total"]):
+            self._data[name] = [
+                [streaming.MinComputation(), None],
+                [streaming.PercentileComputation(0.5, iters_num), None],
+                [streaming.PercentileComputation(0.9, iters_num), None],
+                [streaming.PercentileComputation(0.95, iters_num), None],
+                [streaming.MaxComputation(), None],
+                [streaming.MeanComputation(), None],
+                [streaming.MeanComputation(),
+                 lambda st, has_result: ("%.1f%%" % (st.result() * 100)
+                                         if has_result else "n/a")],
+                [streaming.IncrementComputation(),
+                 lambda st, has_result: st.result()]]
 
     def _map_iteration_values(self, iteration):
-        pass
+        return dict(iteration["atomic_actions"], total=iteration["duration"])
+
+    def add_iteration(self, iteration):
+        for name, value in self._map_iteration_values(iteration).items():
+            self._data[name][-1][0].add()
+            if iteration["error"]:
+                self._data[name][-2][0].add(0)
+            else:
+                self._data[name][-2][0].add(1)
+                for idx, dummy in enumerate(self._data[name][:-2]):
+                    self._data[name][idx][0].add(value)
+
+
+class OutputChart(Chart):
+    """Base class for charts related to scenario output."""
+
+    def __init__(self, workload_info,
+                 zipped_size=1000, title="", description=""):
+        super(OutputChart, self).__init__(workload_info, zipped_size)
+        self.title = title
+        self.description = description
+
+    def _map_iteration_values(self, iteration):
+        return iteration
+
+    def render(self):
+        return {"title": self.title,
+                "description": self.description,
+                "widget": self.widget,
+                "data": super(OutputChart, self).render()}
+
+
+@plugin.configure(name="StackedArea")
+class OutputStackedAreaChart(OutputChart):
+
+    widget = "StackedArea"
+
+
+@plugin.configure(name="Pie")
+class OutputAvgChart(OutputChart, AvgChart):
+
+    widget = "Pie"
+
+
+@plugin.configure(name="Table")
+class OutputTable(OutputChart, Table):
+
+    widget = "Table"
+
+
+@plugin.configure(name="StatsTable")
+class OutputStatsTable(OutputTable):
+
+    columns = ["Action", "Min (sec)", "Median (sec)", "90%ile (sec)",
+               "95%ile (sec)", "Max (sec)", "Avg (sec)", "Count"]
+
+    def add_iteration(self, iteration):
+        for name, value in self._map_iteration_values(iteration):
+            if name not in self._data:
+                iters_num = self._workload_info["iterations_count"]
+                self._data[name] = [
+                    [streaming.MinComputation(), None],
+                    [streaming.PercentileComputation(0.5, iters_num), None],
+                    [streaming.PercentileComputation(0.9, iters_num), None],
+                    [streaming.PercentileComputation(0.95, iters_num), None],
+                    [streaming.MaxComputation(), None],
+                    [streaming.MeanComputation(), None],
+                    [streaming.IncrementComputation(),
+                     lambda v, na: v.result()]]
+
+            self._data[name][-1][0].add(None)
+            self._data[name][-2][0].add(1)
+            for idx, dummy in enumerate(self._data[name][:-1]):
+                self._data[name][idx][0].add(value)

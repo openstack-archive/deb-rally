@@ -34,12 +34,16 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
                                        "murano.list_environments")
 
     def test_create_environments(self):
-        mock_create = mock.Mock(return_value="foo_env")
-        self.clients("murano").environments.create = mock_create
+        self.clients("murano").environments.create = mock.Mock()
         scenario = utils.MuranoScenario(context=self.context)
-        create_env = scenario._create_environment("env_name")
-        self.assertEqual("foo_env", create_env)
-        mock_create.assert_called_once_with({"name": "env_name"})
+        scenario.generate_random_name = mock.Mock()
+
+        create_env = scenario._create_environment()
+        self.assertEqual(
+            create_env,
+            self.clients("murano").environments.create.return_value)
+        self.clients("murano").environments.create.assert_called_once_with(
+            {"name": scenario.generate_random_name.return_value})
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "murano.create_environment")
 
@@ -51,16 +55,6 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
         self.clients("murano").environments.delete.assert_called_once_with(
             environment.id
         )
-
-        config = CONF.benchmark
-        self.mock_wait_for_delete.mock.assert_called_once_with(
-            environment,
-            update_resource=self.mock_get_from_manager.mock.return_value,
-            timeout=config.murano_delete_environment_timeout,
-            check_interval=config.murano_delete_environment_check_interval)
-        self.mock_get_from_manager.mock.assert_called_once_with()
-        self._test_atomic_action_timer(scenario.atomic_actions(),
-                                       "murano.delete_environment")
 
     def test_create_session(self):
         self.clients("murano").sessions.configure.return_value = "sess"
@@ -99,12 +93,11 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
         self.mock_wait_for.mock.assert_called_once_with(
             environment,
             update_resource=self.mock_get_from_manager.mock.return_value,
-            is_ready=self.mock_resource_is.mock.return_value,
+            ready_statuses=["READY"],
             check_interval=config.murano_deploy_environment_check_interval,
             timeout=config.murano_deploy_environment_timeout)
         self.mock_get_from_manager.mock.assert_called_once_with(
             ["DEPLOY FAILURE"])
-        self.mock_resource_is.mock.assert_called_once_with("READY")
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "murano.deploy_environment")
 
@@ -112,7 +105,7 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
                 side_effect=mock.mock_open(read_data="Key: value"),
                 create=True)
     def test_read_from_file(self, mock_open):
-        utility = utils.MuranoPackageManager()
+        utility = utils.MuranoPackageManager({"uuid": "fake_task_id"})
         data = utility._read_from_file("filename")
         expected_data = {"Key": "value"}
         self.assertEqual(expected_data, data)
@@ -126,7 +119,7 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
                     "Classes": {"app.name_abc": "app_class.yaml"}}
         mock_murano_package_manager__read_from_file.side_effect = (
             [manifest])
-        utility = utils.MuranoPackageManager()
+        utility = utils.MuranoPackageManager({"uuid": "fake_task_id"})
         utility._change_app_fullname("tmp/tmpfile/")
         mock_murano_package_manager__read_from_file.assert_has_calls(
             [mock.call("tmp/tmpfile/manifest.yaml")]
@@ -146,7 +139,7 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
             mock_murano_package_manager__change_app_fullname,
             mock_shutil_copytree, mock_tempfile_mkdtemp,
             mock_zipfile_is_zipfile):
-        utility = utils.MuranoPackageManager()
+        utility = utils.MuranoPackageManager({"uuid": "fake_task_id"})
         package_path = "tmp/tmpfile"
 
         mock_zipfile_is_zipfile.return_value = False
@@ -167,7 +160,7 @@ class MuranoScenarioTestCase(test.ScenarioTestCase):
 
     @mock.patch("zipfile.is_zipfile")
     def test_prepare_zip_if_zip(self, mock_zipfile_is_zipfile):
-        utility = utils.MuranoPackageManager()
+        utility = utils.MuranoPackageManager({"uuid": "fake_task_id"})
         package_path = "tmp/tmpfile.zip"
         mock_zipfile_is_zipfile.return_value = True
         zip_file = utility._prepare_package(package_path)

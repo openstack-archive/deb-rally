@@ -33,6 +33,7 @@
         times: {{smoke or 20 }}
         concurrency: {{smoke or 10}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -40,6 +41,64 @@
           neutron:
              network: -1
              subnet: -1
+      sla:
+        failure_rate:
+          max: 20
+
+  NeutronSecurityGroup.create_and_list_security_groups:
+    -
+      args:
+        security_group_create_args: {}
+      runner:
+        type: "constant"
+        times: {{smoke or 20 }}
+        concurrency: {{smoke or 10}}
+      context:
+        users:
+          tenants: {{smoke or 3}}
+          users_per_tenant: {{smoke or 2}}
+        quotas:
+          neutron:
+            security_group: -1
+      sla:
+        failure_rate:
+          max: 20
+
+  NeutronSecurityGroup.create_and_delete_security_groups:
+    -
+      args:
+        security_group_create_args: {}
+      runner:
+        type: "constant"
+        times: {{smoke or 20 }}
+        concurrency: {{smoke or 10}}
+      context:
+        users:
+          tenants: {{smoke or 3}}
+          users_per_tenant: {{smoke or 2}}
+        quotas:
+          neutron:
+            security_group: -1
+      sla:
+        failure_rate:
+          max: 20
+
+  NeutronSecurityGroup.create_and_update_security_groups:
+    -
+      args:
+        security_group_create_args: {}
+        security_group_update_args: {}
+      runner:
+        type: "constant"
+        times: {{smoke or 20 }}
+        concurrency: {{smoke or 10}}
+      context:
+        users:
+          tenants: {{smoke or 3}}
+          users_per_tenant: {{smoke or 2}}
+        quotas:
+          neutron:
+            security_group: -1
       sla:
         failure_rate:
           max: 20
@@ -77,6 +136,7 @@
         times: {{smoke or 15}}
         concurrency: {{smoke or 5}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -100,6 +160,7 @@
         times: {{smoke or 15}}
         concurrency: {{smoke or 5}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -255,6 +316,65 @@
         failure_rate:
           max: 0
 
+  NeutronLoadbalancerV1.create_and_list_healthmonitors:
+    -
+      args:
+        healthmonitor_create_args: {}
+      runner:
+        type: "constant"
+        times: {{smoke or 20}}
+        concurrency: {{smoke or 10}}
+      context:
+        users:
+          tenants: {{smoke or 5}}
+          users_per_tenant: {{smoke or 2}}
+        quotas:
+          neutron:
+            health_monitor: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronLoadbalancerV1.create_and_delete_healthmonitors:
+    -
+      args:
+        healthmonitor_create_args: {}
+      runner:
+        type: "constant"
+        times: {{smoke or 20}}
+        concurrency: {{smoke or 10}}
+      context:
+        users:
+          tenants: {{smoke or 5}}
+          users_per_tenant: {{smoke or 2}}
+        quotas:
+          neutron:
+            health_monitor: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronLoadbalancerV1.create_and_update_healthmonitors:
+    -
+      args:
+        healthmonitor_create_args: {}
+        healthmonitor_update_args:
+          admin_state_up: False
+      runner:
+        type: "constant"
+        times: {{smoke or 20}}
+        concurrency: {{smoke or 10}}
+      context:
+        users:
+          tenants: {{smoke or 5}}
+          users_per_tenant: {{smoke or 2}}
+        quotas:
+          neutron:
+            health_monitor: -1
+      sla:
+        failure_rate:
+          max: 0
+
   NeutronNetworks.create_and_update_networks:
     -
       args:
@@ -292,6 +412,7 @@
         times: {{smoke or 20}}
         concurrency: {{smoke or 10}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -319,6 +440,7 @@
         times: {{smoke or 15}}
         concurrency: {{smoke or 5}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -347,6 +469,7 @@
         times: {{smoke or 20}}
         concurrency: {{smoke or 10}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -390,6 +513,7 @@
         times: {{smoke or 20}}
         concurrency: {{smoke or 10}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -434,6 +558,7 @@
         times: {{smoke or 15}}
         concurrency: {{smoke or 5}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}
@@ -457,6 +582,7 @@
         times: {{smoke or 8}}
         concurrency: {{smoke or 4}}
       context:
+        network: {}
         users:
           tenants: {{smoke or 3}}
           users_per_tenant: {{smoke or 2}}

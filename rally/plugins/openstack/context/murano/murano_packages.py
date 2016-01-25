@@ -19,7 +19,7 @@ import zipfile
 from rally.common import fileutils
 from rally.common.i18n import _
 from rally.common.i18n import _LE
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils
 from rally import consts
 from rally import exceptions
@@ -47,7 +47,7 @@ class PackageGenerator(context.Context):
         "additionalProperties": False
     }
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `Murano packages`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `Murano packages`"))
     def setup(self):
         is_config_app_dir = False
         pckg_path = os.path.expanduser(self.config["app_package"])
@@ -64,7 +64,7 @@ class PackageGenerator(context.Context):
 
         for user, tenant_id in utils.iterate_per_tenants(
                 self.context["users"]):
-            clients = osclients.Clients(user["endpoint"])
+            clients = osclients.Clients(user["credential"])
             self.context["tenants"][tenant_id]["packages"] = []
             if is_config_app_dir:
                 self.context["tenants"][tenant_id]["murano_ctx"] = zip_name
@@ -74,7 +74,7 @@ class PackageGenerator(context.Context):
 
             self.context["tenants"][tenant_id]["packages"].append(package)
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `Murano packages`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `Murano packages`"))
     def cleanup(self):
         resource_manager.cleanup(names=["murano.packages"],
                                  users=self.context.get("users", []))

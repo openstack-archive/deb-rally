@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import ddt
 import mock
 
 from rally import exceptions as rally_exceptions
@@ -25,6 +26,7 @@ NOVA_SERVERS_MODULE = "rally.plugins.openstack.scenarios.nova.servers"
 NOVA_SERVERS = NOVA_SERVERS_MODULE + ".NovaServers"
 
 
+@ddt.ddt
 class NovaServersTestCase(test.ScenarioTestCase):
 
     def test_boot_rescue_unrescue(self):
@@ -32,7 +34,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = mock.MagicMock()
         scenario = servers.NovaServers(self.context)
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._rescue_server = mock.MagicMock()
         scenario._unrescue_server = mock.MagicMock()
         scenario._delete_server = mock.MagicMock()
@@ -56,7 +58,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = mock.MagicMock()
         scenario = servers.NovaServers(self.context)
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._start_server = mock.MagicMock()
         scenario._stop_server = mock.MagicMock()
         scenario._delete_server = mock.MagicMock()
@@ -85,7 +87,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         scenario._delete_server = mock.MagicMock()
         scenario._reboot_server = mock.MagicMock()
         scenario._stop_and_start_server = mock.MagicMock()
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
 
         scenario.boot_and_bounce_server("img", 1, actions=actions)
         scenario._boot_server.assert_called_once_with("img", 1)
@@ -158,7 +160,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         scenario._soft_reboot_server = mock.MagicMock()
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._delete_server = mock.MagicMock()
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
 
         scenario.boot_and_bounce_server("img", 1, actions=actions)
 
@@ -187,7 +189,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = object()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._delete_server = mock.MagicMock()
         scenario.sleep_between = mock.MagicMock()
@@ -220,7 +222,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
 
     def test_boot_and_list_server(self):
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock()
         scenario._list_servers = mock.MagicMock()
 
@@ -234,7 +236,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = object()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._suspend_server = mock.MagicMock()
         scenario._resume_server = mock.MagicMock()
@@ -254,7 +256,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = object()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._pause_server = mock.MagicMock()
         scenario._unpause_server = mock.MagicMock()
@@ -298,7 +300,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = object()
         scenario = servers.NovaServers(self.context)
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario.sleep_between = mock.MagicMock()
         scenario._delete_server = mock.MagicMock()
 
@@ -324,7 +326,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         scenario = servers.NovaServers(self.context)
 
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
 
         kwargs = {"fakearg": "f"}
         expected_kwargs = {"fakearg": "f"}
@@ -358,7 +360,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_image.id = "image_id"
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._create_image = mock.MagicMock(return_value=fake_image)
         scenario._delete_server = mock.MagicMock()
@@ -383,7 +385,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         to_flavor = mock.MagicMock()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._resize_confirm = mock.MagicMock()
         scenario._resize_revert = mock.MagicMock()
@@ -406,11 +408,102 @@ class NovaServersTestCase(test.ScenarioTestCase):
     def test_resize_with_revert(self):
         self._test_resize(confirm=False)
 
+    @ddt.data({"confirm": True, "do_delete": True},
+              {"confirm": False, "do_delete": True})
+    @ddt.unpack
+    def test_boot_server_attach_created_volume_and_resize(self, confirm=False,
+                                                          do_delete=False):
+        fake_volume = mock.MagicMock()
+        fake_server = mock.MagicMock()
+        flavor = mock.MagicMock()
+        to_flavor = mock.MagicMock()
+
+        scenario = servers.NovaServers(self.context)
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
+        scenario._boot_server = mock.MagicMock(return_value=fake_server)
+        scenario._create_volume = mock.MagicMock(return_value=fake_volume)
+        scenario._attach_volume = mock.MagicMock()
+        scenario._resize_confirm = mock.MagicMock()
+        scenario._resize_revert = mock.MagicMock()
+        scenario._resize = mock.MagicMock()
+        scenario._detach_volume = mock.MagicMock()
+        scenario._delete_volume = mock.MagicMock()
+        scenario._delete_server = mock.MagicMock()
+        scenario.sleep_between = mock.MagicMock()
+
+        volume_size = 10
+        scenario.boot_server_attach_created_volume_and_resize(
+            "img", flavor, to_flavor, volume_size, min_sleep=10,
+            max_sleep=20, confirm=confirm, do_delete=do_delete)
+
+        scenario._boot_server.assert_called_once_with("img", flavor)
+        scenario._create_volume.assert_called_once_with(volume_size)
+        scenario._attach_volume.assert_called_once_with(fake_server,
+                                                        fake_volume)
+        scenario._detach_volume.assert_called_once_with(fake_server,
+                                                        fake_volume)
+        scenario.sleep_between.assert_called_once_with(10, 20)
+        scenario._resize.assert_called_once_with(fake_server, to_flavor)
+
+        if confirm:
+            scenario._resize_confirm.assert_called_once_with(fake_server)
+        else:
+            scenario._resize_revert.assert_called_once_with(fake_server)
+
+        if do_delete:
+            scenario._detach_volume.assert_called_once_with(fake_server,
+                                                            fake_volume)
+            scenario._delete_volume.assert_called_once_with(fake_volume)
+            scenario._delete_server.assert_called_once_with(fake_server,
+                                                            force=False)
+
+    @ddt.data({"confirm": True, "do_delete": True},
+              {"confirm": False, "do_delete": True})
+    @ddt.unpack
+    def test_boot_server_from_volume_and_resize(self, confirm=False,
+                                                do_delete=False):
+        fake_server = object()
+        flavor = mock.MagicMock()
+        to_flavor = mock.MagicMock()
+        scenario = servers.NovaServers(self.context)
+        scenario._boot_server = mock.MagicMock(return_value=fake_server)
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
+        scenario._resize_confirm = mock.MagicMock()
+        scenario._resize_revert = mock.MagicMock()
+        scenario._resize = mock.MagicMock()
+        scenario.sleep_between = mock.MagicMock()
+        scenario._delete_server = mock.MagicMock()
+
+        fake_volume = fakes.FakeVolumeManager().create()
+        fake_volume.id = "volume_id"
+        scenario._create_volume = mock.MagicMock(return_value=fake_volume)
+
+        volume_size = 10
+        scenario.boot_server_from_volume_and_resize(
+            "img", flavor, to_flavor, volume_size, min_sleep=10,
+            max_sleep=20, confirm=confirm, do_delete=do_delete)
+
+        scenario._create_volume.assert_called_once_with(10, imageRef="img")
+        scenario._boot_server.assert_called_once_with(
+            "img", flavor,
+            block_device_mapping={"vda": "volume_id:::1"})
+        scenario.sleep_between.assert_called_once_with(10, 20)
+        scenario._resize.assert_called_once_with(fake_server, to_flavor)
+
+        if confirm:
+            scenario._resize_confirm.assert_called_once_with(fake_server)
+        else:
+            scenario._resize_revert.assert_called_once_with(fake_server)
+
+        if do_delete:
+            scenario._delete_server.assert_called_once_with(fake_server,
+                                                            force=False)
+
     def test_boot_and_live_migrate_server(self):
         fake_server = mock.MagicMock()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario.sleep_between = mock.MagicMock()
         scenario._find_host_to_migrate = mock.MagicMock(
@@ -437,7 +530,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = mock.MagicMock()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario.sleep_between = mock.MagicMock()
         scenario._find_host_to_migrate = mock.MagicMock(
@@ -517,7 +610,7 @@ class NovaServersTestCase(test.ScenarioTestCase):
         fake_server = mock.MagicMock()
 
         scenario = servers.NovaServers(self.context)
-        scenario._generate_random_name = mock.MagicMock(return_value="name")
+        scenario.generate_random_name = mock.MagicMock(return_value="name")
         scenario._boot_server = mock.MagicMock(return_value=fake_server)
         scenario._stop_server = mock.MagicMock()
         scenario._migrate = mock.MagicMock()
@@ -569,6 +662,42 @@ class NovaServersTestCase(test.ScenarioTestCase):
         server = scenario._boot_server.return_value
         scenario._rebuild_server.assert_called_once_with(server, to_image)
         scenario._delete_server.assert_called_once_with(server)
+
+    def test_boot_and_show_server(self):
+        server = fakes.FakeServer()
+        image = fakes.FakeImage()
+        flavor = fakes.FakeFlavor()
+
+        scenario = servers.NovaServers(self.context)
+        scenario._boot_server = mock.MagicMock(return_value=server)
+        scenario._show_server = mock.MagicMock()
+
+        scenario.boot_and_show_server(image, flavor, fakearg="fakearg")
+
+        scenario._boot_server.assert_called_once_with(image, flavor,
+                                                      fakearg="fakearg")
+        scenario._show_server.assert_called_once_with(server)
+
+    @ddt.data({"length": None},
+              {"length": 10})
+    @ddt.unpack
+    def test_boot_and_get_console_server(self, length):
+        server = fakes.FakeServer()
+        image = fakes.FakeImage()
+        flavor = fakes.FakeFlavor()
+        kwargs = {"fakearg": "fakearg"}
+
+        scenario = servers.NovaServers(self.context)
+        scenario._boot_server = mock.MagicMock(return_value=server)
+        scenario._get_server_console_output = mock.MagicMock()
+
+        scenario.boot_and_get_console_output(image, flavor, length,
+                                             **kwargs)
+
+        scenario._boot_server.assert_called_once_with(image, flavor,
+                                                      **kwargs)
+        scenario._get_server_console_output.assert_called_once_with(server,
+                                                                    length)
 
     @mock.patch(NOVA_SERVERS_MODULE + ".network_wrapper.wrap")
     def test_boot_and_associate_floating_ip(self, mock_wrap):

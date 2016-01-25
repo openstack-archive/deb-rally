@@ -17,9 +17,9 @@
 
 from __future__ import print_function
 
+from rally import api
 from rally.cli import cliutils
 from rally.cli import envutils
-from rally.common import db
 from rally.common.i18n import _
 from rally.common import objects
 from rally.common import utils
@@ -27,7 +27,7 @@ from rally import osclients
 
 
 class ShowCommands(object):
-    """Show resources.
+    """[Deprecated since 0.2.0] Show resources.
 
     Set of commands that allow you to view resources, provided by OpenStack
     cloud represented by deployment.
@@ -39,15 +39,20 @@ class ShowCommands(object):
                  "user": credentials["username"],
                  "tenant": credentials["tenant_name"]})
 
-    def _get_endpoints(self, deployment):
-        deployment = db.deployment_get(deployment)
-        admin = deployment.get("admin")
-        endpoints = [admin] if admin else []
+    @staticmethod
+    def _get_credentials(deployment):
+        deployment = api.Deployment.get(deployment)
+        # NOTE(andreykurilin): it is a bad practise to access to inner db_obj,
+        # but we can do it here, since we are planning to deprecate and remove
+        # this  command at all.
+        admin = deployment.deployment.get("admin")
+        credentials = [admin] if admin else []
 
-        return endpoints + deployment.get("users", [])
+        return credentials + deployment.deployment.get("users", [])
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment(cli_arg_name="deployment")
     @cliutils.process_keystone_exc
     def images(self, deployment=None):
@@ -55,7 +60,6 @@ class ShowCommands(object):
 
         :param deployment: UUID or name of a deployment
         """
-
         headers = ["UUID", "Name", "Size (B)"]
         mixed_case_fields = ["UUID", "Name"]
         float_cols = ["Size (B)"]
@@ -63,11 +67,11 @@ class ShowCommands(object):
                               [cliutils.pretty_float_formatter(col)
                                for col in float_cols]))
 
-        for endpoint_dict in self._get_endpoints(deployment):
-            self._print_header("Images", endpoint_dict)
+        for credential_dict in self._get_credentials(deployment):
+            self._print_header("Images", credential_dict)
             table_rows = []
 
-            clients = osclients.Clients(objects.Endpoint(**endpoint_dict))
+            clients = osclients.Clients(objects.Credential(**credential_dict))
             glance_client = clients.glance()
             for image in glance_client.images.list():
                 data = [image.id, image.name, image.size]
@@ -79,7 +83,8 @@ class ShowCommands(object):
                                 mixed_case_fields=mixed_case_fields)
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment(cli_arg_name="deployment")
     @cliutils.process_keystone_exc
     def flavors(self, deployment=None):
@@ -94,10 +99,10 @@ class ShowCommands(object):
                               [cliutils.pretty_float_formatter(col)
                                for col in float_cols]))
 
-        for endpoint_dict in self._get_endpoints(deployment):
-            self._print_header("Flavors", endpoint_dict)
+        for credential_dict in self._get_credentials(deployment):
+            self._print_header("Flavors", credential_dict)
             table_rows = []
-            clients = osclients.Clients(objects.Endpoint(**endpoint_dict))
+            clients = osclients.Clients(objects.Credential(**credential_dict))
             nova_client = clients.nova()
             for flavor in nova_client.flavors.list():
                 data = [flavor.id, flavor.name, flavor.vcpus,
@@ -110,7 +115,8 @@ class ShowCommands(object):
                                 mixed_case_fields=mixed_case_fields)
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment(cli_arg_name="deployment")
     @cliutils.process_keystone_exc
     def networks(self, deployment=None):
@@ -119,10 +125,10 @@ class ShowCommands(object):
         headers = ["ID", "Label", "CIDR"]
         mixed_case_fields = ["ID", "Label", "CIDR"]
 
-        for endpoint_dict in self._get_endpoints(deployment):
-            self._print_header("Networks", endpoint_dict)
+        for credential_dict in self._get_credentials(deployment):
+            self._print_header("Networks", credential_dict)
             table_rows = []
-            clients = osclients.Clients(objects.Endpoint(**endpoint_dict))
+            clients = osclients.Clients(objects.Credential(**credential_dict))
             nova_client = clients.nova()
             for network in nova_client.networks.list():
                 data = [network.id, network.label, network.cidr]
@@ -133,7 +139,8 @@ class ShowCommands(object):
                                 mixed_case_fields=mixed_case_fields)
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment(cli_arg_name="deployment")
     @cliutils.process_keystone_exc
     def secgroups(self, deployment=None):
@@ -141,10 +148,10 @@ class ShowCommands(object):
 
         headers = ["ID", "Name", "Description"]
         mixed_case_fields = ["ID", "Name", "Description"]
-        for endpoint_dict in self._get_endpoints(deployment):
-            self._print_header("Security groups", endpoint_dict)
+        for credential_dict in self._get_credentials(deployment):
+            self._print_header("Security groups", credential_dict)
             table_rows = []
-            clients = osclients.Clients(objects.Endpoint(**endpoint_dict))
+            clients = osclients.Clients(objects.Credential(**credential_dict))
             nova_client = clients.nova()
             for secgroup in nova_client.security_groups.list():
                 data = [secgroup.id, secgroup.name,
@@ -157,7 +164,8 @@ class ShowCommands(object):
                 mixed_case_fields=mixed_case_fields)
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment(cli_arg_name="deployment")
     @cliutils.process_keystone_exc
     def keypairs(self, deployment=None):
@@ -166,10 +174,10 @@ class ShowCommands(object):
         headers = ["Name", "Fingerprint"]
         mixed_case_fields = ["Name", "Fingerprint"]
 
-        for endpoint_dict in self._get_endpoints(deployment):
-            self._print_header("Keypairs", endpoint_dict)
+        for credential_dict in self._get_credentials(deployment):
+            self._print_header("Keypairs", credential_dict)
             table_rows = []
-            clients = osclients.Clients(objects.Endpoint(**endpoint_dict))
+            clients = osclients.Clients(objects.Credential(**credential_dict))
             nova_client = clients.nova()
             for keypair in nova_client.keypairs.list():
                 data = [keypair.name, keypair.fingerprint]

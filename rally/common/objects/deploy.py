@@ -36,6 +36,10 @@ class Deployment(object):
         return Deployment(db.deployment_get(deploy))
 
     @staticmethod
+    def list(status=None, parent_uuid=None, name=None):
+        return db.deployment_list(status, parent_uuid, name)
+
+    @staticmethod
     def delete_by_uuid(uuid):
         db.deployment_delete(uuid)
 
@@ -51,15 +55,15 @@ class Deployment(object):
     def update_config(self, config):
         self._update({"config": config})
 
-    def update_endpoints(self, endpoints):
-        admin = endpoints.get("admin", {})
+    def update_credentials(self, credentials):
+        admin = credentials.get("admin", {})
         if admin:
             admin = admin.to_dict(include_permission=True)
 
         self._update({
             "admin": admin,
             "users": [e.to_dict(include_permission=True)
-                      for e in endpoints.get("users", [])]
+                      for e in credentials.get("users", [])]
         })
 
     def set_started(self):

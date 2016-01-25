@@ -31,15 +31,9 @@ from rally.task import utils
 CONF = cfg.CONF
 
 MURANO_BENCHMARK_OPTS = [
-    cfg.IntOpt("murano_delete_environment_timeout", default=180,
-               deprecated_name="delete_environment_timeout",
-               help="A timeout in seconds for an environment delete"),
     cfg.IntOpt("murano_deploy_environment_timeout", default=1200,
                deprecated_name="deploy_environment_timeout",
                help="A timeout in seconds for an environment deploy"),
-    cfg.IntOpt("murano_delete_environment_check_interval", default=2,
-               deprecated_name="delete_environment_check_interval",
-               help="Delete environment check interval in seconds"),
     cfg.IntOpt("murano_deploy_environment_check_interval", default=5,
                deprecated_name="deploy_environment_check_interval",
                help="Deploy environment check interval in seconds"),
@@ -58,14 +52,14 @@ class MuranoScenario(scenario.OpenStackScenario):
         return self.clients("murano").environments.list()
 
     @atomic.action_timer("murano.create_environment")
-    def _create_environment(self, env_name=None):
+    def _create_environment(self):
         """Create environment.
 
         :param env_name: String used to name environment
 
         :returns: Environment instance
         """
-        env_name = env_name or self._generate_random_name()
+        env_name = self.generate_random_name()
         return self.clients("murano").environments.create({"name": env_name})
 
     @atomic.action_timer("murano.delete_environment")
@@ -78,14 +72,6 @@ class MuranoScenario(scenario.OpenStackScenario):
         """
         self.clients("murano").environments.delete(environment.id)
 
-        config = CONF.benchmark
-        utils.wait_for_delete(
-            environment,
-            update_resource=utils.get_from_manager(),
-            timeout=config.murano_delete_environment_timeout,
-            check_interval=config.murano_delete_environment_check_interval
-        )
-
     @atomic.action_timer("murano.create_session")
     def _create_session(self, environment_id):
         """Create session for environment with specific id
@@ -95,9 +81,9 @@ class MuranoScenario(scenario.OpenStackScenario):
         """
         return self.clients("murano").sessions.configure(environment_id)
 
+    @atomic.optional_action_timer("murano.create_service")
     def _create_service(self, environment, session, full_package_name,
-                        image_name=None, flavor_name=None,
-                        atomic_action=True):
+                        image_name=None, flavor_name=None):
         """Create Murano service.
 
         :param environment: Environment instance
@@ -105,23 +91,19 @@ class MuranoScenario(scenario.OpenStackScenario):
         :param full_package_name: full name of the Murano package
         :param image_name: Image name
         :param flavor_name: Flavor name
-        :param atomic_action: True if this is atomic action
+        :param atomic_action: True if this is atomic action. added and
+                              handled by the optional_action_timer()
+                              decorator
         :returns: Service instance
         """
         app_id = str(uuid.uuid4())
         data = {"?": {"id": app_id,
                       "type": full_package_name},
-                "name": self._generate_random_name("rally_")}
+                "name": self.generate_random_name()}
 
-        if atomic_action:
-            with atomic.ActionTimer(self, "murano.create_service"):
-                return self.clients("murano").services.post(
-                    environment_id=environment.id, path="/", data=data,
-                    session_id=session.id)
-        else:
-            return self.clients("murano").services.post(
-                environment_id=environment.id, path="/", data=data,
-                session_id=session.id)
+        return self.clients("murano").services.post(
+            environment_id=environment.id, path="/", data=data,
+            session_id=session.id)
 
     @atomic.action_timer("murano.deploy_environment")
     def _deploy_environment(self, environment, session):
@@ -135,7 +117,8 @@ class MuranoScenario(scenario.OpenStackScenario):
 
         config = CONF.benchmark
         utils.wait_for(
-            environment, is_ready=utils.resource_is("READY"),
+            environment,
+            ready_statuses=["READY"],
             update_resource=utils.get_from_manager(["DEPLOY FAILURE"]),
             timeout=config.murano_deploy_environment_timeout,
             check_interval=config.murano_deploy_environment_check_interval
@@ -207,10 +190,14 @@ class MuranoScenario(scenario.OpenStackScenario):
 
     def _zip_package(self, package_path):
         """Call _prepare_package method that returns path to zip archive."""
-        return MuranoPackageManager()._prepare_package(package_path)
+        return MuranoPackageManager(self.task)._prepare_package(package_path)
 
 
-class MuranoPackageManager(object):
+class MuranoPackageManager(common_utils.RandomNameGeneratorMixin):
+    RESOURCE_NAME_FORMAT = "app.rally_XXXXXXXX_XXXXXXXX"
+
+    def __init__(self, task):
+        self.task = task
 
     @staticmethod
     def _read_from_file(filename):
@@ -246,7 +233,7 @@ class MuranoPackageManager(object):
         :param app_dir: path to directory with Murano application context
         """
 
-        new_fullname = common_utils.generate_random_name("app.")
+        new_fullname = self.generate_random_name()
 
         manifest_file = os.path.join(app_dir, "manifest.yaml")
         manifest = self._read_from_file(manifest_file)

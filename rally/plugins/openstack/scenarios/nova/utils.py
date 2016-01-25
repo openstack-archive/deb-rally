@@ -108,7 +108,7 @@ class NovaScenario(scenario.OpenStackScenario):
 
     @atomic.action_timer("nova.boot_server")
     def _boot_server(self, image_id, flavor_id,
-                     auto_assign_nic=False, name=None, **kwargs):
+                     auto_assign_nic=False, **kwargs):
         """Boot a server.
 
         Returns when the server is actually booted and in "ACTIVE" state.
@@ -119,11 +119,10 @@ class NovaScenario(scenario.OpenStackScenario):
         :param image_id: int, image ID for server creation
         :param flavor_id: int, flavor ID for server creation
         :param auto_assign_nic: bool, whether or not to auto assign NICs
-        :param name: str, server name
         :param kwargs: other optional parameters to initialize the server
         :returns: nova Server instance
         """
-        server_name = name or self._generate_random_name()
+        server_name = self.generate_random_name()
         secgroup = self.context.get("user", {}).get("secgroup")
         if secgroup:
             if "security_groups" not in kwargs:
@@ -142,7 +141,7 @@ class NovaScenario(scenario.OpenStackScenario):
         time.sleep(CONF.benchmark.nova_server_boot_prepoll_delay)
         server = utils.wait_for(
             server,
-            is_ready=utils.resource_is("ACTIVE"),
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_boot_timeout,
             check_interval=CONF.benchmark.nova_server_boot_poll_interval
@@ -153,7 +152,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.reboot(reboot_type=reboottype)
         time.sleep(CONF.benchmark.nova_server_reboot_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("ACTIVE"),
+            server,
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_reboot_timeout,
             check_interval=CONF.benchmark.nova_server_reboot_poll_interval
@@ -169,6 +169,28 @@ class NovaScenario(scenario.OpenStackScenario):
         :param server: The server to reboot.
         """
         self._do_server_reboot(server, "SOFT")
+
+    @atomic.action_timer("nova.show_server")
+    def _show_server(self, server):
+        """Show server details.
+
+        :param server: The server to get details for.
+
+        :returns: Server details
+        """
+        return self.clients("nova").servers.get(server)
+
+    @atomic.action_timer("nova.get_console_output_server")
+    def _get_server_console_output(self, server, length=None):
+        """Get text of a console log output from a server.
+
+        :param server: The server whose console output to retrieve
+        :param length: The number of tail log lines you would like to retrieve.
+
+        :returns: Text console output from server
+        """
+        return self.clients("nova").servers.get_console_output(server,
+                                                               length=length)
 
     @atomic.action_timer("nova.reboot_server")
     def _reboot_server(self, server):
@@ -193,7 +215,7 @@ class NovaScenario(scenario.OpenStackScenario):
         time.sleep(CONF.benchmark.nova_server_rebuild_prepoll_delay)
         utils.wait_for(
             server,
-            is_ready=utils.resource_is("ACTIVE"),
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_rebuild_timeout,
             check_interval=CONF.benchmark.nova_server_rebuild_poll_interval
@@ -210,7 +232,8 @@ class NovaScenario(scenario.OpenStackScenario):
         """
         server.start()
         utils.wait_for(
-            server, is_ready=utils.resource_is("ACTIVE"),
+            server,
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_start_timeout,
             check_interval=CONF.benchmark.nova_server_start_poll_interval
@@ -227,7 +250,8 @@ class NovaScenario(scenario.OpenStackScenario):
         """
         server.stop()
         utils.wait_for(
-            server, is_ready=utils.resource_is("SHUTOFF"),
+            server,
+            ready_statuses=["SHUTOFF"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_stop_timeout,
             check_interval=CONF.benchmark.nova_server_stop_poll_interval
@@ -245,7 +269,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.rescue()
         time.sleep(CONF.benchmark.nova_server_rescue_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("RESCUE"),
+            server,
+            ready_statuses=["RESCUE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_rescue_timeout,
             check_interval=CONF.benchmark.nova_server_rescue_poll_interval
@@ -262,7 +287,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.unrescue()
         time.sleep(CONF.benchmark.nova_server_unrescue_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("ACTIVE"),
+            server,
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_unrescue_timeout,
             check_interval=CONF.benchmark.nova_server_unrescue_poll_interval
@@ -280,7 +306,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.suspend()
         time.sleep(CONF.benchmark.nova_server_suspend_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("SUSPENDED"),
+            server,
+            ready_statuses=["SUSPENDED"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_suspend_timeout,
             check_interval=CONF.benchmark.nova_server_suspend_poll_interval
@@ -298,7 +325,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.resume()
         time.sleep(CONF.benchmark.nova_server_resume_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("ACTIVE"),
+            server,
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_resume_timeout,
             check_interval=CONF.benchmark.nova_server_resume_poll_interval
@@ -316,7 +344,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.pause()
         time.sleep(CONF.benchmark.nova_server_pause_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("PAUSED"),
+            server,
+            ready_statuses=["PAUSED"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_pause_timeout,
             check_interval=CONF.benchmark.nova_server_pause_poll_interval
@@ -334,7 +363,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.unpause()
         time.sleep(CONF.benchmark.nova_server_unpause_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("ACTIVE"),
+            server,
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_unpause_timeout,
             check_interval=CONF.benchmark.nova_server_unpause_poll_interval
@@ -352,7 +382,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.shelve()
         time.sleep(CONF.benchmark.nova_server_shelve_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("SHELVED_OFFLOADED"),
+            server,
+            ready_statuses=["SHELVED_OFFLOADED"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_shelve_timeout,
             check_interval=CONF.benchmark.nova_server_shelve_poll_interval
@@ -369,7 +400,8 @@ class NovaScenario(scenario.OpenStackScenario):
         server.unshelve()
         time.sleep(CONF.benchmark.nova_server_unshelve_prepoll_delay)
         utils.wait_for(
-            server, is_ready=utils.resource_is("ACTIVE"),
+            server,
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_unshelve_timeout,
             check_interval=CONF.benchmark.nova_server_unshelve_poll_interval
@@ -390,8 +422,10 @@ class NovaScenario(scenario.OpenStackScenario):
             else:
                 server.delete()
 
-            utils.wait_for_delete(
+            utils.wait_for_status(
                 server,
+                ready_statuses=["deleted"],
+                check_deletion=True,
                 update_resource=utils.get_from_manager(),
                 timeout=CONF.benchmark.nova_server_delete_timeout,
                 check_interval=CONF.benchmark.nova_server_delete_poll_interval
@@ -412,8 +446,10 @@ class NovaScenario(scenario.OpenStackScenario):
                     server.delete()
 
             for server in servers:
-                utils.wait_for_delete(
+                utils.wait_for_status(
                     server,
+                    ready_statuses=["deleted"],
+                    check_deletion=True,
                     update_resource=utils.get_from_manager(),
                     timeout=CONF.benchmark.nova_server_delete_timeout,
                     check_interval=CONF.
@@ -430,8 +466,10 @@ class NovaScenario(scenario.OpenStackScenario):
         """
         image.delete()
         check_interval = CONF.benchmark.nova_server_image_delete_poll_interval
-        utils.wait_for_delete(
+        utils.wait_for_status(
             image,
+            ready_statuses=["deleted"],
+            check_deletion=True,
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_image_delete_timeout,
             check_interval=check_interval
@@ -454,7 +492,7 @@ class NovaScenario(scenario.OpenStackScenario):
         check_interval = CONF.benchmark.nova_server_image_create_poll_interval
         image = utils.wait_for(
             image,
-            is_ready=utils.resource_is("ACTIVE"),
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_image_create_timeout,
             check_interval=check_interval
@@ -479,7 +517,7 @@ class NovaScenario(scenario.OpenStackScenario):
 
         :returns: Created keypair name
         """
-        keypair_name = self._generate_random_name(prefix="rally_keypair_")
+        keypair_name = self.generate_random_name()
         keypair = self.clients("nova").keypairs.create(keypair_name, **kwargs)
         return keypair.name
 
@@ -497,8 +535,8 @@ class NovaScenario(scenario.OpenStackScenario):
         self.clients("nova").keypairs.delete(keypair_name)
 
     @atomic.action_timer("nova.boot_servers")
-    def _boot_servers(self, image_id, flavor_id, requests, name_prefix=None,
-                      instances_amount=1, auto_assign_nic=False, **kwargs):
+    def _boot_servers(self, image_id, flavor_id, requests, instances_amount=1,
+                      auto_assign_nic=False, **kwargs):
         """Boot multiple servers.
 
         Returns when all the servers are actually booted and are in the
@@ -507,22 +545,18 @@ class NovaScenario(scenario.OpenStackScenario):
         :param image_id: ID of the image to be used for server creation
         :param flavor_id: ID of the flavor to be used for server creation
         :param requests: Number of booting requests to perform
-        :param name_prefix: The prefix to use while naming the created servers.
-                            The rest of the server names will be '_<number>'
         :param instances_amount: Number of instances to boot per each request
         :param auto_assign_nic: bool, whether or not to auto assign NICs
         :param kwargs: other optional parameters to initialize the servers
 
         :returns: List of created server objects
         """
-        if not name_prefix:
-            name_prefix = self._generate_random_name()
-
         if auto_assign_nic and not kwargs.get("nics", False):
             nic = self._pick_random_nic()
             if nic:
                 kwargs["nics"] = nic
 
+        name_prefix = self.generate_random_name()
         for i in range(requests):
             self.clients("nova").servers.create("%s_%d" % (name_prefix, i),
                                                 image_id, flavor_id,
@@ -532,12 +566,12 @@ class NovaScenario(scenario.OpenStackScenario):
         # NOTE(msdubov): Nova python client returns only one server even when
         #                min_count > 1, so we have to rediscover all the
         #                created servers manually.
-        servers = filter(lambda server: server.name.startswith(name_prefix),
-                         self.clients("nova").servers.list())
+        servers = [s for s in self.clients("nova").servers.list()
+                   if s.name.startswith(name_prefix)]
         time.sleep(CONF.benchmark.nova_server_boot_prepoll_delay)
         servers = [utils.wait_for(
             server,
-            is_ready=utils.resource_is("ACTIVE"),
+            ready_statuses=["ACTIVE"],
             update_resource=utils.
             get_from_manager(),
             timeout=CONF.benchmark.nova_server_boot_timeout,
@@ -545,7 +579,7 @@ class NovaScenario(scenario.OpenStackScenario):
         ) for server in servers]
         return servers
 
-    @atomic.action_timer("nova.associate_floating_ip")
+    @atomic.optional_action_timer("nova.associate_floating_ip")
     def _associate_floating_ip(self, server, address, fixed_address=None):
         """Add floating IP to an instance
 
@@ -553,22 +587,26 @@ class NovaScenario(scenario.OpenStackScenario):
         :param address: The ip address or FloatingIP to add to the instance
         :param fixed_address: The fixedIP address the FloatingIP is to be
                associated with (optional)
+        :param atomic_action: True if this is an atomic action. added
+                              and handled by the
+                              optional_action_timer() decorator
         """
         server.add_floating_ip(address, fixed_address=fixed_address)
-        utils.wait_for(
-            server,
-            is_ready=self.check_ip_address(address),
-            update_resource=utils.get_from_manager()
-        )
+        utils.wait_for(server,
+                       is_ready=self.check_ip_address(address),
+                       update_resource=utils.get_from_manager())
         # Update server data
         server.addresses = server.manager.get(server.id).addresses
 
-    @atomic.action_timer("nova.dissociate_floating_ip")
+    @atomic.optional_action_timer("nova.dissociate_floating_ip")
     def _dissociate_floating_ip(self, server, address):
         """Remove floating IP from an instance
 
         :param server: The :class:`Server` to add an IP to.
         :param address: The ip address or FloatingIP to remove
+        :param atomic_action: True if this is an atomic action. added
+                              and handled by the
+                              optional_action_timer() decorator
         """
         server.remove_floating_ip(address)
         utils.wait_for(
@@ -601,7 +639,7 @@ class NovaScenario(scenario.OpenStackScenario):
         server.resize(flavor)
         utils.wait_for(
             server,
-            is_ready=utils.resource_is("VERIFY_RESIZE"),
+            ready_statuses=["VERIFY_RESIZE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_resize_timeout,
             check_interval=CONF.benchmark.nova_server_resize_poll_interval
@@ -612,7 +650,7 @@ class NovaScenario(scenario.OpenStackScenario):
         server.confirm_resize()
         utils.wait_for(
             server,
-            is_ready=utils.resource_is(status),
+            ready_statuses=[status],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_resize_confirm_timeout,
             check_interval=(
@@ -624,7 +662,7 @@ class NovaScenario(scenario.OpenStackScenario):
         server.revert_resize()
         utils.wait_for(
             server,
-            is_ready=utils.resource_is(status),
+            ready_statuses=[status],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_resize_revert_timeout,
             check_interval=(
@@ -640,7 +678,7 @@ class NovaScenario(scenario.OpenStackScenario):
                                                           device)
         utils.wait_for(
             volume,
-            is_ready=utils.resource_is("in-use"),
+            ready_statuses=["in-use"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_resize_revert_timeout,
             check_interval=(
@@ -655,7 +693,7 @@ class NovaScenario(scenario.OpenStackScenario):
                                                           volume_id)
         utils.wait_for(
             volume,
-            is_ready=utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_detach_volume_timeout,
             check_interval=CONF.benchmark.nova_detach_volume_poll_interval
@@ -681,7 +719,7 @@ class NovaScenario(scenario.OpenStackScenario):
                                   disk_over_commit=disk_over_commit)
         utils.wait_for(
             server,
-            is_ready=utils.resource_is("ACTIVE"),
+            ready_statuses=["ACTIVE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_live_migrate_timeout,
             check_interval=(
@@ -731,7 +769,7 @@ class NovaScenario(scenario.OpenStackScenario):
         server_admin.migrate()
         utils.wait_for(
             server,
-            is_ready=utils.resource_is("VERIFY_RESIZE"),
+            ready_statuses=["VERIFY_RESIZE"],
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.nova_server_migrate_timeout,
             check_interval=(
@@ -750,7 +788,7 @@ class NovaScenario(scenario.OpenStackScenario):
         with atomic.ActionTimer(self, "nova.create_%s_security_groups" %
                                 security_group_count):
             for i in range(security_group_count):
-                sg_name = self._generate_random_name()
+                sg_name = self.generate_random_name()
                 sg = self.clients("nova").security_groups.create(sg_name,
                                                                  sg_name)
                 security_groups.append(sg)
@@ -780,8 +818,8 @@ class NovaScenario(scenario.OpenStackScenario):
         with atomic.ActionTimer(self, "nova.update_%s_security_groups" %
                                 len(security_groups)):
             for sec_group in security_groups:
-                sg_new_name = self._generate_random_name()
-                sg_new_desc = self._generate_random_name()
+                sg_new_name = self.generate_random_name()
+                sg_new_desc = self.generate_random_name()
                 self.clients("nova").security_groups.update(sec_group.id,
                                                             sg_new_name,
                                                             sg_new_desc)
@@ -806,7 +844,7 @@ class NovaScenario(scenario.OpenStackScenario):
     def _create_floating_ips_bulk(self, ip_range, **kwargs):
         """Create floating IPs by range."""
         ip_range = network_wrapper.generate_cidr(start_cidr=ip_range)
-        pool_name = self._generate_random_name(prefix="rally_fip_pool_")
+        pool_name = self.generate_random_name()
         return self.admin_clients("nova").floating_ips_bulk.create(
             ip_range=ip_range, pool=pool_name, **kwargs)
 
@@ -842,7 +880,7 @@ class NovaScenario(scenario.OpenStackScenario):
 
         :param ip_range: IP range in CIDR notation to create
         """
-        net_label = self._generate_random_name(prefix="rally_novanet")
+        net_label = self.generate_random_name()
         ip_range = network_wrapper.generate_cidr(start_cidr=ip_range)
         return self.admin_clients("nova").networks.create(
             label=net_label, cidr=ip_range, **kwargs)

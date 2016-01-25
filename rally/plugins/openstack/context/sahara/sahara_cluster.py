@@ -16,7 +16,7 @@
 from oslo_config import cfg
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import exceptions
@@ -79,6 +79,9 @@ class SaharaCluster(context.Context):
             },
             "enable_anti_affinity": {
                 "type": "boolean"
+            },
+            "enable_proxy": {
+                "type": "boolean"
             }
         },
         "additionalProperties": False,
@@ -86,22 +89,24 @@ class SaharaCluster(context.Context):
                      "flavor_id"]
     }
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `Sahara Cluster`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `Sahara Cluster`"))
     def setup(self):
-        self.context["sahara_clusters"] = {}
+        utils.init_sahara_context(self)
+        self.context["sahara"]["clusters"] = {}
 
         wait_dict = {}
 
         for user, tenant_id in rutils.iterate_per_tenants(
                 self.context["users"]):
 
-            image_id = self.context["tenants"][tenant_id]["sahara_image"]
+            image_id = self.context["tenants"][tenant_id]["sahara"]["image"]
 
             floating_ip_pool = self.config.get("floating_ip_pool")
 
             temporary_context = {
                 "user": user,
-                "tenant": self.context["tenants"][tenant_id]
+                "tenant": self.context["tenants"][tenant_id],
+                "task": self.context["task"]
             }
             scenario = utils.SaharaScenario(context=temporary_context)
 
@@ -121,10 +126,12 @@ class SaharaCluster(context.Context):
                 cluster_configs=self.config.get("cluster_configs"),
                 enable_anti_affinity=self.config.get("enable_anti_affinity",
                                                      False),
+                enable_proxy=self.config.get("enable_proxy", False),
                 wait_active=False
             )
 
-            self.context["tenants"][tenant_id]["sahara_cluster"] = cluster.id
+            self.context["tenants"][tenant_id]["sahara"]["cluster"] = (
+                cluster.id)
 
             # Need to save the client instance to poll for active status
             wait_dict[cluster] = scenario.clients("sahara")
@@ -155,7 +162,7 @@ class SaharaCluster(context.Context):
                 return False
         return True
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `Sahara Cluster`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `Sahara Cluster`"))
     def cleanup(self):
 
         # TODO(boris-42): Delete only resources created by this context

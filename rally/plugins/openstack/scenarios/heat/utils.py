@@ -18,7 +18,7 @@ import time
 from oslo_config import cfg
 import requests
 
-from rally.common import log as logging
+from rally.common import logging
 from rally import exceptions
 from rally.plugins.openstack import scenario
 from rally.task import atomic
@@ -128,7 +128,7 @@ class HeatScenario(scenario.OpenStackScenario):
 
         :returns: object of stack
         """
-        stack_name = self._generate_random_name(prefix="rally_stack_")
+        stack_name = self.generate_random_name()
         kw = {
             "stack_name": stack_name,
             "disable_rollback": True,
@@ -147,7 +147,7 @@ class HeatScenario(scenario.OpenStackScenario):
 
         stack = utils.wait_for(
             stack,
-            is_ready=utils.resource_is("CREATE_COMPLETE"),
+            ready_statuses=["CREATE_COMPLETE"],
             update_resource=utils.get_from_manager(["CREATE_FAILED"]),
             timeout=CONF.benchmark.heat_stack_create_timeout,
             check_interval=CONF.benchmark.heat_stack_create_poll_interval)
@@ -181,7 +181,7 @@ class HeatScenario(scenario.OpenStackScenario):
         time.sleep(CONF.benchmark.heat_stack_update_prepoll_delay)
         stack = utils.wait_for(
             stack,
-            is_ready=utils.resource_is("UPDATE_COMPLETE"),
+            ready_statuses=["UPDATE_COMPLETE"],
             update_resource=utils.get_from_manager(["UPDATE_FAILED"]),
             timeout=CONF.benchmark.heat_stack_update_timeout,
             check_interval=CONF.benchmark.heat_stack_update_poll_interval)
@@ -198,7 +198,7 @@ class HeatScenario(scenario.OpenStackScenario):
         self.clients("heat").actions.check(stack.id)
         utils.wait_for(
             stack,
-            is_ready=utils.resource_is("CHECK_COMPLETE"),
+            ready_statuses=["CHECK_COMPLETE"],
             update_resource=utils.get_from_manager(["CHECK_FAILED"]),
             timeout=CONF.benchmark.heat_stack_check_timeout,
             check_interval=CONF.benchmark.heat_stack_check_poll_interval)
@@ -212,8 +212,10 @@ class HeatScenario(scenario.OpenStackScenario):
         :param stack: stack object
         """
         stack.delete()
-        utils.wait_for_delete(
+        utils.wait_for_status(
             stack,
+            ready_statuses=["deleted"],
+            check_deletion=True,
             update_resource=utils.get_from_manager(),
             timeout=CONF.benchmark.heat_stack_delete_timeout,
             check_interval=CONF.benchmark.heat_stack_delete_poll_interval)
@@ -228,7 +230,7 @@ class HeatScenario(scenario.OpenStackScenario):
         self.clients("heat").actions.suspend(stack.id)
         utils.wait_for(
             stack,
-            is_ready=utils.resource_is("SUSPEND_COMPLETE"),
+            ready_statuses=["SUSPEND_COMPLETE"],
             update_resource=utils.get_from_manager(
                 ["SUSPEND_FAILED"]),
             timeout=CONF.benchmark.heat_stack_suspend_timeout,
@@ -244,7 +246,7 @@ class HeatScenario(scenario.OpenStackScenario):
         self.clients("heat").actions.resume(stack.id)
         utils.wait_for(
             stack,
-            is_ready=utils.resource_is("RESUME_COMPLETE"),
+            ready_statuses=["RESUME_COMPLETE"],
             update_resource=utils.get_from_manager(
                 ["RESUME_FAILED"]),
             timeout=CONF.benchmark.heat_stack_resume_timeout,
@@ -255,13 +257,13 @@ class HeatScenario(scenario.OpenStackScenario):
         """Creates a snapshot for given stack.
 
         :param stack: stack that will be used as base for snapshot
-        :returns snapshot created for given stack
+        :returns: snapshot created for given stack
         """
         snapshot = self.clients("heat").stacks.snapshot(
             stack.id)
         utils.wait_for(
             stack,
-            is_ready=utils.resource_is("SNAPSHOT_COMPLETE"),
+            ready_statuses=["SNAPSHOT_COMPLETE"],
             update_resource=utils.get_from_manager(
                 ["SNAPSHOT_FAILED"]),
             timeout=CONF.benchmark.heat_stack_snapshot_timeout,
@@ -278,7 +280,7 @@ class HeatScenario(scenario.OpenStackScenario):
         self.clients("heat").stacks.restore(stack.id, snapshot_id)
         utils.wait_for(
             stack,
-            is_ready=utils.resource_is("RESTORE_COMPLETE"),
+            ready_statuses=["RESTORE_COMPLETE"],
             update_resource=utils.get_from_manager(
                 ["RESTORE_FAILED"]),
             timeout=CONF.benchmark.heat_stack_restore_timeout,
@@ -329,7 +331,7 @@ class HeatScenario(scenario.OpenStackScenario):
 
         :param stack: stack to call a webhook on
         :param output_key: The name of the output to get the URL from
-        :raises: InvalidConfigException if the output key is not found
+        :raises InvalidConfigException: if the output key is not found
         """
         url = None
         for output in stack.outputs:

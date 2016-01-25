@@ -14,7 +14,7 @@
 
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils
 from rally import consts
 from rally import osclients
@@ -38,17 +38,16 @@ class ExistingNetwork(context.Context):
         "additionalProperties": False
     }
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `existing_network`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `existing_network`"))
     def setup(self):
         for user, tenant_id in utils.iterate_per_tenants(
                 self.context.get("users", [])):
             net_wrapper = network_wrapper.wrap(
-                osclients.Clients(user["endpoint"]),
-                self.context["task"],
+                osclients.Clients(user["credential"]), self,
                 config=self.config)
             self.context["tenants"][tenant_id]["networks"] = (
                 net_wrapper.list_networks())
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `existing_network`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `existing_network`"))
     def cleanup(self):
         """Networks were not created by Rally, so nothing to do."""

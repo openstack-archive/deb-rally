@@ -30,13 +30,10 @@ import yaml
 from rally import api
 from rally.cli import cliutils
 from rally.cli import envutils
-from rally.common import db
 from rally.common import fileutils
 from rally.common.i18n import _
-from rally.common import objects
 from rally.common import utils
 from rally import exceptions
-from rally import osclients
 from rally import plugins
 
 
@@ -46,13 +43,13 @@ class DeploymentCommands(object):
     @cliutils.args("--name", type=str, required=True,
                    help="A name of the deployment.")
     @cliutils.args("--fromenv", action="store_true",
-                   help="Read environment variables instead of config file")
-    @cliutils.args("--filename", type=str, required=False,
+                   help="Read environment variables instead of config file.")
+    @cliutils.args("--filename", type=str, required=False, metavar="<path>",
                    help="A path to the configuration file of the "
                    "deployment.")
     @cliutils.args("--no-use", action="store_false", dest="do_use",
                    help="Don\'t set new deployment as default for"
-                        " future operations")
+                        " future operations.")
     @plugins.ensure_plugins_are_loaded
     def create(self, name, fromenv=False, filename=None, do_use=False):
         """Create new deployment.
@@ -72,6 +69,8 @@ class DeploymentCommands(object):
             OS_TENANT_NAME
             OS_ENDPOINT
             OS_REGION_NAME
+            OS_CACERT
+            OS_INSECURE
 
         All other deployment engines need more complex configuration data, so
         it should be stored in configuration file.
@@ -88,32 +87,11 @@ class DeploymentCommands(object):
         """
 
         if fromenv:
-            required_env_vars = ["OS_USERNAME", "OS_PASSWORD", "OS_AUTH_URL",
-                                 "OS_TENANT_NAME"]
-
-            unavailable_vars = [v for v in required_env_vars
-                                if v not in os.environ]
-            if unavailable_vars:
-                print("The following environment variables are required but "
-                      "not set: %s" % " ".join(unavailable_vars))
-                return(1)
-
-            config = {
-                "type": "ExistingCloud",
-                "auth_url": os.environ["OS_AUTH_URL"],
-                "endpoint": os.environ.get("OS_ENDPOINT"),
-                "admin": {
-                    "username": os.environ["OS_USERNAME"],
-                    "password": os.environ["OS_PASSWORD"],
-                    "tenant_name": os.environ["OS_TENANT_NAME"]
-                }
-            }
-            region_name = os.environ.get("OS_REGION_NAME")
-            if region_name and region_name != "None":
-                config["region_name"] = region_name
+            config = {"type": "ExistingCloud"}
+            config.update(envutils.get_creds_from_env_vars())
         else:
             if not filename:
-                print("Either --filename or --fromenv is required")
+                print("Either --filename or --fromenv is required.")
                 return(1)
             filename = os.path.expanduser(filename)
             with open(filename, "rb") as deploy_file:
@@ -133,7 +111,8 @@ class DeploymentCommands(object):
             self.use(deployment["uuid"])
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment.")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment()
     @plugins.ensure_plugins_are_loaded
     def recreate(self, deployment=None):
@@ -147,7 +126,8 @@ class DeploymentCommands(object):
         api.Deployment.recreate(deployment)
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment.")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment()
     @plugins.ensure_plugins_are_loaded
     def destroy(self, deployment=None):
@@ -166,7 +146,7 @@ class DeploymentCommands(object):
 
         headers = ["uuid", "created_at", "name", "status", "active"]
         current_deployment = envutils.get_global("RALLY_DEPLOYMENT")
-        deployment_list = deployment_list or db.deployment_list()
+        deployment_list = deployment_list or api.Deployment.list()
 
         table_rows = []
         if deployment_list:
@@ -182,7 +162,8 @@ class DeploymentCommands(object):
                     "\nrally deployment create"))
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment.")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment()
     @cliutils.suppress_warnings
     def config(self, deployment=None):
@@ -193,15 +174,16 @@ class DeploymentCommands(object):
 
         :param deployment: a UUID or name of the deployment
         """
-        deploy = db.deployment_get(deployment)
+        deploy = api.Deployment.get(deployment)
         result = deploy["config"]
         print(json.dumps(result, sort_keys=True, indent=4))
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment.")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment()
     def show(self, deployment=None):
-        """Show the endpoints of the deployment.
+        """Show the credentials of the deployment.
 
         :param deployment: a UUID or name of the deployment
         """
@@ -210,19 +192,20 @@ class DeploymentCommands(object):
                    "region_name", "endpoint_type"]
         table_rows = []
 
-        deployment = db.deployment_get(deployment)
-        users = deployment.get("users", [])
-        admin = deployment.get("admin")
-        endpoints = users + [admin] if admin else users
+        deployment = api.Deployment.get(deployment)
+        users = deployment["users"]
+        admin = deployment["admin"]
+        credentials = users + [admin] if admin else users
 
-        for ep in endpoints:
+        for ep in credentials:
             data = ["***" if m == "password" else ep.get(m, "")
                     for m in headers]
             table_rows.append(utils.Struct(**dict(zip(headers, data))))
         cliutils.print_list(table_rows, headers)
 
     @cliutils.args("--deployment", dest="deployment", type=str,
-                   required=False, help="UUID or name of a deployment.")
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @envutils.with_default_deployment()
     def check(self, deployment=None):
         """Check keystone authentication and list all available services.
@@ -239,11 +222,7 @@ class DeploymentCommands(object):
             return(1)
 
         try:
-            services = api.Deployment.service_list(deployment)
-            users = deployment["users"]
-            for endpoint_dict in users:
-                osclients.Clients(objects.Endpoint(**endpoint_dict)).keystone()
-
+            services = api.Deployment.check(deployment)
         except keystone_exceptions.ConnectionRefused:
             print(_("Unable to connect %s.") % deployment["admin"]["auth_url"])
             return(1)
@@ -262,46 +241,51 @@ class DeploymentCommands(object):
               " services are available:"))
         cliutils.print_list(table_rows, headers)
 
-    def _update_openrc_deployment_file(self, deployment, endpoint):
+    def _update_openrc_deployment_file(self, deployment, credential):
         openrc_path = os.path.expanduser("~/.rally/openrc-%s" % deployment)
         with open(openrc_path, "w+") as env_file:
             env_file.write("export OS_AUTH_URL=%(auth_url)s\n"
                            "export OS_USERNAME=%(username)s\n"
                            "export OS_PASSWORD=%(password)s\n"
                            "export OS_TENANT_NAME=%(tenant_name)s\n"
-                           % endpoint)
-            if endpoint.get("region_name"):
+                           % credential)
+            if credential.get("region_name"):
                 env_file.write("export OS_REGION_NAME=%s\n" %
-                               endpoint["region_name"])
-            if endpoint.get("endpoint"):
+                               credential["region_name"])
+            if credential.get("endpoint"):
                 env_file.write("export OS_ENDPOINT=%s\n" %
-                               endpoint["endpoint"])
-            if re.match(r"^/v3/?$",
-                        parse.urlparse(endpoint["auth_url"]).path) is not None:
+                               credential["endpoint"])
+            if credential.get("https_cacert"):
+                env_file.write("export OS_CACERT=%s\n" %
+                               credential["https_cacert"])
+            if re.match(r"^/v3/?$", parse.urlparse(
+                    credential["auth_url"]).path) is not None:
                 env_file.write("export OS_USER_DOMAIN_NAME=%s\n"
                                "export OS_PROJECT_DOMAIN_NAME=%s\n" %
-                               (endpoint["user_domain_name"],
-                                endpoint["project_domain_name"]))
+                               (credential["user_domain_name"],
+                                credential["project_domain_name"]))
         expanded_path = os.path.expanduser("~/.rally/openrc")
         if os.path.exists(expanded_path):
             os.remove(expanded_path)
         os.symlink(openrc_path, expanded_path)
 
-    @cliutils.args("--deployment", type=str, dest="deployment",
-                   help="UUID or name of the deployment")
+    @cliutils.args("--deployment", dest="deployment", type=str,
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     def use(self, deployment):
         """Set active deployment.
 
         :param deployment: UUID or name of a deployment
         """
         try:
-            deployment = db.deployment_get(deployment)
+            deployment = api.Deployment.get(deployment)
             print("Using deployment: %s" % deployment["uuid"])
+
             fileutils.update_globals_file("RALLY_DEPLOYMENT",
                                           deployment["uuid"])
             self._update_openrc_deployment_file(
-                deployment["uuid"], deployment.get("admin") or
-                deployment.get("users")[0])
+                deployment["uuid"],
+                deployment["admin"] or deployment["users"][0])
             print ("~/.rally/openrc was updated\n\nHINTS:\n"
                    "* To get your cloud resources, run:\n\t"
                    "rally show [flavors|images|keypairs|networks|secgroups]\n"

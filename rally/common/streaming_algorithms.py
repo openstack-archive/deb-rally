@@ -18,8 +18,6 @@ import math
 
 import six
 
-from rally.common.i18n import _
-from rally import exceptions
 from rally.task.processing import utils
 
 
@@ -30,6 +28,10 @@ class StreamingAlgorithm(object):
     @abc.abstractmethod
     def add(self, value):
         """Process a single value from the input stream."""
+
+    @abc.abstractmethod
+    def merge(self, other):
+        """Merge results processed by another instance."""
 
     @abc.abstractmethod
     def result(self):
@@ -53,12 +55,14 @@ class MeanComputation(StreamingAlgorithm):
         self.count += 1
         self.total += value
 
+    def merge(self, other):
+        self.count += other.count
+        self.total += other.total
+
     def result(self):
-        if self.count == 0:
-            message = _("Unable to calculate the mean: "
-                        "no values processed so far.")
-            raise exceptions.RallyException(message)
-        return self.total / self.count
+        if self.count:
+            return self.total / self.count
+        return None
 
 
 class StdDevComputation(StreamingAlgorithm):
@@ -81,11 +85,29 @@ class StdDevComputation(StreamingAlgorithm):
         self.mean = self.mean_computation.result()
         self.dev_sum = self.dev_sum + (value - mean_prev) * (value - self.mean)
 
+    def merge(self, other):
+        if not other.mean_computation.count:
+            return
+        dev_sum1 = self.dev_sum
+        count1 = self.count
+        mean1 = self.mean
+
+        dev_sum2 = other.dev_sum
+        count2 = other.count
+        mean2 = other.mean
+
+        self.mean_computation.merge(other.mean_computation)
+        self.mean = self.mean_computation.result()
+        self.count += other.count
+
+        self.dev_sum = (dev_sum1 + count1 * mean1 ** 2 +
+                        dev_sum2 + count2 * mean2 ** 2 -
+                        self.count * self.mean ** 2)
+
     def result(self):
+        # NOTE(amaretskiy): Need at least two values to be processed
         if self.count < 2:
-            message = _("Unable to calculate the standard deviation: "
-                        "need at least two values to be processed.")
-            raise exceptions.RallyException(message)
+            return None
         return math.sqrt(self.dev_sum / (self.count - 1))
 
 
@@ -101,9 +123,11 @@ class MinComputation(StreamingAlgorithm):
         if self._value is None or value < self._value:
             self._value = value
 
+    def merge(self, other):
+        if other._value is not None:
+            self.add(other._value)
+
     def result(self):
-        if self._value is None:
-            raise ValueError("No values have been processed")
         return self._value
 
 
@@ -119,9 +143,11 @@ class MaxComputation(StreamingAlgorithm):
         if self._value is None or value > self._value:
             self._value = value
 
+    def merge(self, other):
+        if other._value is not None:
+            self.add(other._value)
+
     def result(self):
-        if self._value is None:
-            raise ValueError("No values have been processed")
         return self._value
 
 
@@ -143,12 +169,16 @@ class PercentileComputation(StreamingAlgorithm):
     def add(self, value):
         self._graph_zipper.add_point(value)
 
+    def merge(self, other):
+        # TODO(ikhudoshyn): Implement me
+        raise NotImplementedError()
+
     def result(self):
         results = list(
             map(lambda x: x[1], self._graph_zipper.get_zipped_graph()))
-        if not results:
-            raise ValueError("No values have been processed")
-        return utils.percentile(results, self._percent)
+        if results:
+            return utils.percentile(results, self._percent)
+        return None
 
 
 class IncrementComputation(StreamingAlgorithm):
@@ -159,6 +189,9 @@ class IncrementComputation(StreamingAlgorithm):
 
     def add(self, *args):
         self._count += 1
+
+    def merge(self, other):
+        self._count += other._count
 
     def result(self):
         return self._count

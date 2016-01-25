@@ -16,7 +16,7 @@
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils
 from rally import consts
 from rally import osclients
@@ -59,16 +59,15 @@ class Network(context.Context):
         "network_create_args": {}
     }
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `network`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `network`"))
     def setup(self):
         # NOTE(rkiran): Some clients are not thread-safe. Thus during
         #               multithreading/multiprocessing, it is likely the
         #               sockets are left open. This problem is eliminated by
         #               creating a connection in setup and cleanup separately.
         net_wrapper = network_wrapper.wrap(
-            osclients.Clients(self.context["admin"]["endpoint"]),
-            self.context["task"],
-            config=self.config)
+            osclients.Clients(self.context["admin"]["credential"]),
+            self, config=self.config)
         for user, tenant_id in (utils.iterate_per_tenants(
                 self.context.get("users", []))):
             self.context["tenants"][tenant_id]["networks"] = []
@@ -82,12 +81,11 @@ class Network(context.Context):
                     network_create_args=self.config["network_create_args"])
                 self.context["tenants"][tenant_id]["networks"].append(network)
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `network`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `network`"))
     def cleanup(self):
         net_wrapper = network_wrapper.wrap(
-            osclients.Clients(self.context["admin"]["endpoint"]),
-            self.context["task"],
-            config=self.config)
+            osclients.Clients(self.context["admin"]["credential"]),
+            self, config=self.config)
         for tenant_id, tenant_ctx in six.iteritems(self.context["tenants"]):
             for network in tenant_ctx.get("networks", []):
                 with logging.ExceptionLogger(

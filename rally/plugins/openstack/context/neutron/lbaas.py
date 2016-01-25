@@ -13,7 +13,7 @@
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils
 from rally import consts
 from rally import osclients
@@ -49,12 +49,11 @@ class Lbaas(context.Context):
         "lbaas_version": 1
     }
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `lbaas`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `lbaas`"))
     def setup(self):
         net_wrapper = network_wrapper.wrap(
-            osclients.Clients(self.context["admin"]["endpoint"]),
-            self.context["task"],
-            config=self.config)
+            osclients.Clients(self.context["admin"]["credential"]),
+            self, config=self.config)
 
         use_lb, msg = net_wrapper.supports_extension("lbaas")
         if not use_lb:
@@ -77,12 +76,11 @@ class Lbaas(context.Context):
                             "Context for LBaaS version %s not implemented."
                             % self.config["lbaas_version"])
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `lbaas`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `lbaas`"))
     def cleanup(self):
         net_wrapper = network_wrapper.wrap(
-            osclients.Clients(self.context["admin"]["endpoint"]),
-            self.context["task"],
-            config=self.config)
+            osclients.Clients(self.context["admin"]["credential"]),
+            self, config=self.config)
         for tenant_id, tenant_ctx in six.iteritems(self.context["tenants"]):
             for network in tenant_ctx.get("networks", []):
                 for pool in network.get("lb_pools", []):

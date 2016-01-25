@@ -21,8 +21,6 @@ from rally.task import atomic
 class DesignateScenario(scenario.OpenStackScenario):
     """Base class for Designate scenarios with basic atomic actions."""
 
-    RESOURCE_NAME_PREFIX = "rally_"
-
     @atomic.action_timer("designate.create_domain")
     def _create_domain(self, domain=None):
         """Create domain.
@@ -33,7 +31,7 @@ class DesignateScenario(scenario.OpenStackScenario):
         domain = domain or {}
 
         domain.setdefault("email", "root@random.name")
-        domain.setdefault("name", "%s.name." % self._generate_random_name())
+        domain["name"] = "%s.name." % self.generate_random_name()
         return self.clients("designate").domains.create(domain)
 
     @atomic.action_timer("designate.list_domains")
@@ -49,26 +47,36 @@ class DesignateScenario(scenario.OpenStackScenario):
         """
         self.clients("designate").domains.delete(domain_id)
 
-    def _create_record(self, domain, record=None, atomic_action=True):
+    @atomic.action_timer("designate.update_domain")
+    def _update_domain(self, domain):
+        """Update designate domain.
+
+        :param domain: designate domain
+        :returns: designate updated domain dict
+        """
+        domain["description"] = "updated domain"
+        domain["email"] = "updated@random.name"
+        return self.clients("designate").domains.update(domain)
+
+    @atomic.optional_action_timer("designate.create_record")
+    def _create_record(self, domain, record=None):
         """Create a record in a domain.
 
         :param domain: domain dict
         :param record: record dict
-        :param atomic_action: True if the record creation should be tracked
-                              as an atomic action
+        :param atomic_action: True if the record creation should be
+                              tracked as an atomic action. added and
+                              handled by the optional_action_timer()
+                              decorator
         :returns: Designate record dict
         """
         record = record or {}
         record.setdefault("type", "A")
-        record.setdefault("name", "%s.%s" % (self._generate_random_name(),
-                                             domain["name"]))
+        record["name"] = "%s.%s" % (self.generate_random_name(),
+                                    domain["name"])
         record.setdefault("data", "10.0.0.1")
 
         client = self.clients("designate")
-
-        if atomic_action:
-            with atomic.ActionTimer(self, "designate.create_record"):
-                return client.records.create(domain["id"], record)
 
         return client.records.create(domain["id"], record)
 
@@ -81,21 +89,18 @@ class DesignateScenario(scenario.OpenStackScenario):
         """
         return self.clients("designate").records.list(domain_id)
 
-    def _delete_record(self, domain_id, record_id, atomic_action=True):
+    @atomic.optional_action_timer("designate.delete_record")
+    def _delete_record(self, domain_id, record_id):
         """Delete a domain record.
 
         :param domain_id: domain ID
         :param record_id: record ID
-        :param atomic_action: True if the record creation should be tracked
-                              as an atomic action
+        :param atomic_action: True if the record creation should be
+                              tracked as an atomic action. added and
+                              handled by the optional_action_timer()
+                              decorator
         """
-        client = self.clients("designate")
-
-        if atomic_action:
-            with atomic.ActionTimer(self, "designate.delete_record"):
-                client.records.delete(domain_id, record_id)
-        else:
-            client.records.delete(domain_id, record_id)
+        self.clients("designate").records.delete(domain_id, record_id)
 
     @atomic.action_timer("designate.create_server")
     def _create_server(self, server=None):
@@ -106,7 +111,7 @@ class DesignateScenario(scenario.OpenStackScenario):
         """
         server = server or {}
 
-        server.setdefault("name", "name.%s." % self._generate_random_name())
+        server["name"] = "name.%s." % self.generate_random_name()
         return self.admin_clients("designate").servers.create(server)
 
     @atomic.action_timer("designate.list_servers")
@@ -121,3 +126,64 @@ class DesignateScenario(scenario.OpenStackScenario):
         :param server_id: unicode server ID
         """
         self.admin_clients("designate").servers.delete(server_id)
+
+    # NOTE: API V2
+    @atomic.action_timer("designate.create_zone")
+    def _create_zone(self, name=None, type_=None, email=None, description=None,
+                     ttl=None):
+        """Create zone.
+
+        :param name: Zone name
+        :param type_: Zone type, PRIMARY or SECONDARY
+        :param email: Zone owner email
+        :param description: Zone description
+        :param ttl: Zone ttl - Time to live in seconds
+        :returns: designate zone dict
+        """
+        type_ = type_ or "PRIMARY"
+
+        if type_ == "PRIMARY":
+            email = email or "root@random.name"
+            # Name is only useful to be random for PRIMARY
+            name = name or "%s.name." % self.generate_random_name()
+
+        return self.clients("designate", version="2").zones.create(
+            name=name,
+            type_=type_,
+            email=email,
+            description=description,
+            ttl=ttl
+        )
+
+    @atomic.action_timer("designate.list_zones")
+    def _list_zones(self, criterion=None, marker=None, limit=None):
+        """Return user zone list.
+
+        :param criterion: API Criterion to filter by
+        :param marker: UUID marker of the item to start the page from
+        :param limit: How many items to return in the page.
+        : returns: list of designate zones
+        """
+        return self.clients("designate", version="2").zones.list()
+
+    @atomic.action_timer("designate.delete_zone")
+    def _delete_zone(self, zone_id):
+        """Delete designate zone.
+
+        :param zone_id: Zone ID
+        """
+        self.clients("designate", version="2").zones.delete(zone_id)
+
+    @atomic.action_timer("designate.list_recordsets")
+    def _list_recordsets(self, zone_id, criterion=None, marker=None,
+                         limit=None):
+        """List zone recordsets.
+
+        :param zone_id: Zone ID
+        :param criterion: API Criterion to filter by
+        :param marker: UUID marker of the item to start the page from
+        :param limit: How many items to return in the page.
+        :returns: zone recordsets list
+        """
+        return self.clients("designate", version="2").recordsets.list(
+            zone_id, criterion=criterion, marker=marker, limit=limit)

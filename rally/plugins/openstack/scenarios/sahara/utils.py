@@ -20,7 +20,8 @@ from oslo_utils import uuidutils
 from saharaclient.api import base as sahara_base
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
+from rally.common import utils as rutils
 from rally import consts
 from rally import exceptions
 from rally.plugins.openstack import scenario
@@ -46,7 +47,9 @@ SAHARA_BENCHMARK_OPTS = [
                help="A timeout in seconds for a Job Execution to complete"),
     cfg.IntOpt("sahara_job_check_interval", default=5,
                deprecated_name="job_check_interval",
-               help="Job Execution status polling interval in seconds")
+               help="Job Execution status polling interval in seconds"),
+    cfg.IntOpt("sahara_workers_per_proxy", default=20,
+               help="Amount of workers one proxy should serve to.")
 ]
 
 benchmark_group = cfg.OptGroup(name="benchmark", title="benchmark options")
@@ -56,7 +59,9 @@ CONF.register_opts(SAHARA_BENCHMARK_OPTS, group=benchmark_group)
 class SaharaScenario(scenario.OpenStackScenario):
     """Base class for Sahara scenarios with basic atomic actions."""
 
-    RESOURCE_NAME_LENGTH = 20
+    # NOTE(sskripnick): Some sahara resource names are validated as hostnames.
+    # Since underscores are not allowed in hostnames we should not use them.
+    RESOURCE_NAME_FORMAT = "rally-sahara-XXXXXX-XXXXXXXXXXXXXXXX"
 
     @atomic.action_timer("sahara.list_node_group_templates")
     def _list_node_group_templates(self):
@@ -74,7 +79,7 @@ class SaharaScenario(scenario.OpenStackScenario):
                                the plugin
         :returns: The created Template
         """
-        name = self._generate_random_name(prefix="master-ngt-")
+        name = self.generate_random_name()
 
         return self.clients("sahara").node_group_templates.create(
             name=name,
@@ -95,7 +100,7 @@ class SaharaScenario(scenario.OpenStackScenario):
                                the plugin
         :returns: The created Template
         """
-        name = self._generate_random_name(prefix="worker-ngt-")
+        name = self.generate_random_name()
 
         return self.clients("sahara").node_group_templates.create(
             name=name,
@@ -156,11 +161,12 @@ class SaharaScenario(scenario.OpenStackScenario):
             if pools:
                 return random.choice(pools).name
             else:
-                LOG.warn("No Floating Ip Pools found. This may cause "
-                         "instances to be unreachable.")
+                LOG.warning("No Floating Ip Pools found. This may cause "
+                            "instances to be unreachable.")
                 return None
 
-    def _setup_floating_ip_pool(self, node_groups, floating_ip_pool):
+    def _setup_floating_ip_pool(self, node_groups, floating_ip_pool,
+                                enable_proxy):
         if consts.Service.NEUTRON in self.clients("services").values():
             LOG.debug("Neutron detected as networking backend.")
             floating_ip_pool_value = self._setup_neutron_floating_ip_pool(
@@ -173,8 +179,18 @@ class SaharaScenario(scenario.OpenStackScenario):
         if floating_ip_pool_value:
             LOG.debug("Using floating ip pool %s." % floating_ip_pool_value)
             # If the pool is set by any means assign it to all node groups.
-            for ng in node_groups:
-                ng["floating_ip_pool"] = floating_ip_pool_value
+            # If the proxy node feature is enabled, Master Node Group and
+            # Proxy Workers should have a floating ip pool set up
+
+            if enable_proxy:
+                proxy_groups = [x for x in node_groups
+                                if x["name"] in ("master-ng", "proxy-ng")]
+                for ng in proxy_groups:
+                    ng["is_proxy_gateway"] = True
+                    ng["floating_ip_pool"] = floating_ip_pool_value
+            else:
+                for ng in node_groups:
+                    ng["floating_ip_pool"] = floating_ip_pool_value
 
         return node_groups
 
@@ -182,8 +198,13 @@ class SaharaScenario(scenario.OpenStackScenario):
         if volumes_per_node:
             LOG.debug("Adding volumes config to Node Groups")
             for ng in node_groups:
-                ng["volumes_per_node"] = volumes_per_node
-                ng["volumes_size"] = volumes_size
+                ng_name = ng["name"]
+                if "worker" in ng_name or "proxy" in ng_name:
+                    # NOTE: Volume storage is used only by HDFS Datanode
+                    # process which runs on workers and proxies.
+
+                    ng["volumes_per_node"] = volumes_per_node
+                    ng["volumes_size"] = volumes_size
 
         return node_groups
 
@@ -230,6 +251,7 @@ class SaharaScenario(scenario.OpenStackScenario):
                         volumes_size=None, auto_security_group=None,
                         security_groups=None, node_configs=None,
                         cluster_configs=None, enable_anti_affinity=False,
+                        enable_proxy=False,
                         wait_active=True):
         """Create a cluster and wait until it becomes Active.
 
@@ -261,9 +283,18 @@ class SaharaScenario(scenario.OpenStackScenario):
                                 Cluster
         :param enable_anti_affinity: If set to true the vms will be scheduled
                                      one per compute node.
+        :param enable_proxy: Use Master Node of a Cluster as a Proxy node and
+                             do not assign floating ips to workers.
         :param wait_active: Wait until a Cluster gets int "Active" state
         :returns: created cluster
         """
+
+        if enable_proxy:
+            proxies_count = int(
+                workers_count / CONF.benchmark.sahara_workers_per_proxy)
+        else:
+            proxies_count = 0
+
         node_groups = [
             {
                 "name": "master-ng",
@@ -276,9 +307,18 @@ class SaharaScenario(scenario.OpenStackScenario):
                 "flavor_id": flavor_id,
                 "node_processes": sahara_consts.NODE_PROCESSES[plugin_name]
                 [hadoop_version]["worker"],
-                "count": workers_count
+                "count": workers_count - proxies_count
             }
         ]
+
+        if proxies_count:
+            node_groups.append({
+                "name": "proxy-ng",
+                "flavor_id": flavor_id,
+                "node_processes": sahara_consts.NODE_PROCESSES[plugin_name]
+                [hadoop_version]["worker"],
+                "count": proxies_count
+            })
 
         if "manager" in (sahara_consts.NODE_PROCESSES[plugin_name]
                          [hadoop_version]):
@@ -294,7 +334,8 @@ class SaharaScenario(scenario.OpenStackScenario):
             })
 
         node_groups = self._setup_floating_ip_pool(node_groups,
-                                                   floating_ip_pool)
+                                                   floating_ip_pool,
+                                                   enable_proxy)
 
         neutron_net_id = self._get_neutron_net_id()
 
@@ -321,7 +362,7 @@ class SaharaScenario(scenario.OpenStackScenario):
             aa_processes = (sahara_consts.ANTI_AFFINITY_PROCESSES[plugin_name]
                             [hadoop_version])
 
-        name = self._generate_random_name(prefix="sahara-cluster-")
+        name = self.generate_random_name()
 
         cluster_object = self.clients("sahara").clusters.create(
             name=name,
@@ -418,18 +459,17 @@ class SaharaScenario(scenario.OpenStackScenario):
 
         :returns: The created Data Source
         """
-        ds_type = self.context["sahara_output_conf"]["output_type"]
-        url_prefix = self.context["sahara_output_conf"]["output_url_prefix"]
+        ds_type = self.context["sahara"]["output_conf"]["output_type"]
+        url_prefix = self.context["sahara"]["output_conf"]["output_url_prefix"]
 
         if ds_type == "swift":
             raise exceptions.RallyException(
                 _("Swift Data Sources are not implemented yet"))
 
-        url = (url_prefix.rstrip("/") + "/%s" %
-               self._generate_random_name(length=10))
+        url = url_prefix.rstrip("/") + "/%s" % self.generate_random_name()
 
         return self.clients("sahara").data_sources.create(
-            name=self._generate_random_name(prefix="out_"),
+            name=self.generate_random_name(),
             description="",
             data_source_type=ds_type,
             url=url)
@@ -520,3 +560,12 @@ class SaharaScenario(scenario.OpenStackScenario):
         LOG.debug("Using neutron router %s." % net["router_id"])
 
         return neutron_net_id
+
+
+def init_sahara_context(context_instance):
+    context_instance.context["sahara"] = context_instance.context.get("sahara",
+                                                                      {})
+    for user, tenant_id in rutils.iterate_per_tenants(
+            context_instance.context["users"]):
+        context_instance.context["tenants"][tenant_id]["sahara"] = (
+            context_instance.context["tenants"][tenant_id].get("sahara", {}))

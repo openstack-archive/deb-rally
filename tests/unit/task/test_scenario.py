@@ -16,7 +16,6 @@
 import traceback
 
 import mock
-import six
 
 from rally import consts
 from rally import exceptions
@@ -199,15 +198,17 @@ class ScenarioTestCase(test.TestCase):
         scenario_inst.sleep_between(0.004, 0.004)
         self.assertEqual(scenario_inst.idle_duration(), 0.005)
 
-    @mock.patch("rally.task.scenario.time.sleep")
+    @mock.patch("rally.common.utils.interruptable_sleep")
     @mock.patch("rally.task.scenario.random.uniform")
-    def test_sleep_between_internal(self, mock_uniform, mock_sleep):
+    def test_sleep_between_internal(self, mock_uniform,
+                                    mock_interruptable_sleep):
         scenario_inst = scenario.Scenario()
 
         mock_uniform.return_value = 1.5
         scenario_inst.sleep_between(1, 2)
 
-        mock_sleep.assert_called_once_with(mock_uniform.return_value)
+        mock_interruptable_sleep.assert_called_once_with(
+            mock_uniform.return_value, 0.1)
         self.assertEqual(scenario_inst.idle_duration(),
                          mock_uniform.return_value)
 
@@ -220,54 +221,58 @@ class ScenarioTestCase(test.TestCase):
                 self.assertTrue(False,
                                 "Scenario `%s` has wrong context" % scenario)
 
-    def test_RESOURCE_NAME_PREFIX(self):
-        self.assertIsInstance(scenario.Scenario.RESOURCE_NAME_PREFIX,
-                              six.string_types)
+    def test_add_output(self):
+        scenario_inst = scenario.Scenario()
+        self.assertEqual({"additive": [], "complete": []},
+                         scenario_inst._output)
 
-    def test_RESOURCE_NAME_LENGTH(self):
-        self.assertIsInstance(scenario.Scenario.RESOURCE_NAME_LENGTH, int)
-        self.assertTrue(scenario.Scenario.RESOURCE_NAME_LENGTH > 4)
+        additive1 = {"title": "Additive 1", "chart_plugin": "Plugin1",
+                     "description": "Foo description",
+                     "data": [["foo", 1], ["bar", 2]]}
+        additive2 = {"title": "Additive 2", "chart_plugin": "Plugin2",
+                     "description": "Bar description",
+                     "data": [["foo", 42], ["bar", 24]]}
+        complete1 = {"title": "Complete 1", "chart_plugin": "Plugin3",
+                     "description": "Complete description",
+                     "data": [["ab", 1], ["cd", 2]]}
+        complete2 = {"title": "Complete 2", "chart_plugin": "Plugin4",
+                     "description": "Another complete description",
+                     "data": [["vx", 1], ["yz", 2]]}
 
-    def test_generate_random_name(self):
-        set_by_length = lambda lst: set(map(len, lst))
-        len_by_prefix = (lambda lst, prefix:
-                         len([i.startswith(prefix) for i in lst]))
-        range_num = 50
+        scenario_inst.add_output(additive=additive1)
+        self.assertEqual({"additive": [additive1], "complete": []},
+                         scenario_inst._output)
 
-        # Defaults
-        result = [scenario.Scenario._generate_random_name()
-                  for i in range(range_num)]
-        self.assertEqual(len(result), len(set(result)))
-        self.assertEqual(
-            set_by_length(result),
-            set([(len(
-                scenario.Scenario.RESOURCE_NAME_PREFIX) +
-                scenario.Scenario.RESOURCE_NAME_LENGTH)]))
-        self.assertEqual(
-            len_by_prefix(result, scenario.Scenario.RESOURCE_NAME_PREFIX),
-            range_num)
+        scenario_inst.add_output(complete=complete1)
+        self.assertEqual({"additive": [additive1], "complete": [complete1]},
+                         scenario_inst._output)
 
-        # Custom prefix
-        prefix = "another_prefix_"
-        result = [scenario.Scenario._generate_random_name(prefix)
-                  for i in range(range_num)]
-        self.assertEqual(len(result), len(set(result)))
-        self.assertEqual(
-            set_by_length(result),
-            set([len(prefix) + scenario.Scenario.RESOURCE_NAME_LENGTH]))
-        self.assertEqual(
-            len_by_prefix(result, prefix), range_num)
+        scenario_inst.add_output(additive=additive2, complete=complete2)
+        self.assertEqual({"additive": [additive1, additive2],
+                          "complete": [complete1, complete2]},
+                         scenario_inst._output)
 
-        # Custom length
-        name_length = 12
-        result = [
-            scenario.Scenario._generate_random_name(length=name_length)
-            for i in range(range_num)]
-        self.assertEqual(len(result), len(set(result)))
-        self.assertEqual(
-            set_by_length(result),
-            set([len(
-                scenario.Scenario.RESOURCE_NAME_PREFIX) + name_length]))
-        self.assertEqual(
-            len_by_prefix(result, scenario.Scenario.RESOURCE_NAME_PREFIX),
-            range_num)
+    def test_add_output_raises(self):
+        additive = {"title": "Foo title", "chart_plugin": "Plugin1",
+                    "description": "Foo description",
+                    "data": [["ab", 1], ["cd", 2]]}
+        complete = {"title": "Bar title", "chart_plugin": "Plugin2",
+                    "description": "Bar description",
+                    "data": [["ef", 1], ["jh", 2]]}
+        scenario_inst = scenario.Scenario()
+
+        scenario_inst.add_output(additive=additive, complete=complete)
+
+        for key in additive.keys():
+            broken_additive = additive.copy()
+            del broken_additive[key]
+            self.assertRaises(exceptions.RallyException,
+                              scenario_inst.add_output,
+                              additive=broken_additive)
+
+        for key in complete.keys():
+            broken_complete = complete.copy()
+            del broken_complete[key]
+            self.assertRaises(exceptions.RallyException,
+                              scenario_inst.add_output,
+                              complete=broken_complete)

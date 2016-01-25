@@ -16,7 +16,7 @@
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 
 LOG = logging.getLogger(__name__)
 
@@ -68,15 +68,19 @@ class NotFoundScenarios(InvalidTaskException):
     msg_fmt = _("There are no benchmark scenarios with names: `%(names)s`.")
 
 
-class InvalidBenchmarkConfig(InvalidTaskException):
+class InvalidTaskConfig(InvalidTaskException):
     msg_fmt = _("Input task is invalid!\n\n"
-                "Benchmark %(name)s[%(pos)s] has wrong configuration"
-                "\nBenchmark configuration:\n%(config)s\n"
+                "Subtask %(name)s[%(pos)s] has wrong configuration"
+                "\Subtask configuration:\n%(config)s\n"
                 "\nReason:\n %(reason)s")
 
 
 class NotFoundException(RallyException):
-    msg_fmt = _("Not found.")
+    msg_fmt = _("The resource can not be found: %(message)s")
+
+
+class ThreadTimeoutException(RallyException):
+    msg_fmt = _("Iteration interrupted due to timeout.")
 
 
 class PluginNotFound(NotFoundException):
@@ -86,7 +90,9 @@ class PluginNotFound(NotFoundException):
 
 class PluginWithSuchNameExists(RallyException):
     msg_fmt = _("Plugin with such name: %(name)s already exists in "
-                "%(namespace)s namespace")
+                "%(namespace)s namespace. It's module allocates at "
+                "%(existing_path)s. You are trying to add plugin whose module "
+                "allocates at %(new_path)s.")
 
 
 class NoSuchConfigField(NotFoundException):
@@ -235,7 +241,3 @@ class MultipleMatchesFound(RallyException):
 
 class TempestConfigCreationFailure(RallyException):
     msg_fmt = _("Unable to create Tempest config file: %(message)s")
-
-
-class TempestResourceCreationFailure(RallyException):
-    msg_fmt = _("Unable to create resource needed for Tempest: %(message)s")

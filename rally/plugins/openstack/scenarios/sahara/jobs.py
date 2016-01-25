@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from rally.common import log as logging
+from rally.common import logging
 from rally import consts
 from rally.plugins.openstack import scenario
 from rally.plugins.openstack.scenarios.sahara import utils
@@ -26,8 +26,8 @@ class SaharaJob(utils.SaharaScenario):
     """Benchmark scenarios for Sahara jobs."""
 
     @validation.required_services(consts.Service.SAHARA)
-    @validation.required_contexts("users", "sahara_image", "sahara_edp",
-                                  "sahara_cluster")
+    @validation.required_contexts("users", "sahara_image",
+                                  "sahara_job_binaries", "sahara_cluster")
     @scenario.configure(context={"cleanup": ["sahara"]})
     def create_launch_job(self, job_type, configs, job_idx=0):
         """Create and execute a Sahara EDP Job.
@@ -42,23 +42,23 @@ class SaharaJob(utils.SaharaScenario):
                         in a sequence
         """
 
-        mains = self.context["tenant"]["sahara_mains"]
-        libs = self.context["tenant"]["sahara_libs"]
+        mains = self.context["tenant"]["sahara"]["mains"]
+        libs = self.context["tenant"]["sahara"]["libs"]
 
-        name = self._generate_random_name(prefix="job_")
+        name = self.generate_random_name()
         job = self.clients("sahara").jobs.create(name=name,
                                                  type=job_type,
                                                  description="",
                                                  mains=mains,
                                                  libs=libs)
 
-        cluster_id = self.context["tenant"]["sahara_cluster"]
+        cluster_id = self.context["tenant"]["sahara"]["cluster"]
 
         if job_type.lower() == "java":
             input_id = None
             output_id = None
         else:
-            input_id = self.context["tenant"]["sahara_input"]
+            input_id = self.context["tenant"]["sahara"]["input"]
             output_id = self._create_output_ds().id
 
         self._run_job_execution(job_id=job.id,
@@ -69,8 +69,8 @@ class SaharaJob(utils.SaharaScenario):
                                 job_idx=job_idx)
 
     @validation.required_services(consts.Service.SAHARA)
-    @validation.required_contexts("users", "sahara_image", "sahara_edp",
-                                  "sahara_cluster")
+    @validation.required_contexts("users", "sahara_image",
+                                  "sahara_job_binaries", "sahara_cluster")
     @scenario.configure(context={"cleanup": ["sahara"]})
     def create_launch_job_sequence(self, jobs):
         """Create and execute a sequence of the Sahara EDP Jobs.
@@ -86,8 +86,8 @@ class SaharaJob(utils.SaharaScenario):
             self.create_launch_job(job["job_type"], job["configs"], idx)
 
     @validation.required_services(consts.Service.SAHARA)
-    @validation.required_contexts("users", "sahara_image", "sahara_edp",
-                                  "sahara_cluster")
+    @validation.required_contexts("users", "sahara_image",
+                                  "sahara_job_binaries", "sahara_cluster")
     @scenario.configure(context={"cleanup": ["sahara"]})
     def create_launch_job_sequence_with_scaling(self, jobs, deltas):
         """Create and execute Sahara EDP Jobs on a scaling Cluster.
@@ -101,7 +101,7 @@ class SaharaJob(utils.SaharaScenario):
                        remove worker nodes from the cluster
         """
 
-        cluster_id = self.context["tenant"]["sahara_cluster"]
+        cluster_id = self.context["tenant"]["sahara"]["cluster"]
 
         # Executing the sequence before the first scaling
         self.create_launch_job_sequence(jobs)

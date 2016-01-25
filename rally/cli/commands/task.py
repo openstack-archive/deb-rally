@@ -29,12 +29,10 @@ import yaml
 from rally import api
 from rally.cli import cliutils
 from rally.cli import envutils
-from rally.common import db
 from rally.common import fileutils
 from rally.common.i18n import _
 from rally.common import junit
-from rally.common import log as logging
-from rally.common import objects
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import exceptions
@@ -140,14 +138,15 @@ class TaskCommands(object):
         print(_("Task config is valid :)"))
         return input_task
 
-    @cliutils.args("--deployment", type=str, dest="deployment",
-                   required=False, help="UUID or name of the deployment")
-    @cliutils.args("--task", "--filename",
+    @cliutils.args("--deployment", dest="deployment", type=str,
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
+    @cliutils.args("--task", "--filename", metavar="<path>",
                    help="Path to the file with full configuration of task")
-    @cliutils.args("--task-args", dest="task_args",
+    @cliutils.args("--task-args", metavar="<json>", dest="task_args",
                    help="Input task args (dict in json). These args are used "
                         "to render input task that is jinja2 template.")
-    @cliutils.args("--task-args-file", dest="task_args_file",
+    @cliutils.args("--task-args-file", metavar="<path>", dest="task_args_file",
                    help="Path to the file with input task args (dict in "
                         "json/yaml). These args are used to render input "
                         "task that is jinja2 template.")
@@ -176,13 +175,15 @@ class TaskCommands(object):
             print(e, file=sys.stderr)
             return(1)
 
-    @cliutils.args("--deployment", type=str, dest="deployment",
-                   required=False, help="UUID or name of the deployment")
-    @cliutils.args("--task", "--filename", help="Path to the input task file")
-    @cliutils.args("--task-args", dest="task_args",
+    @cliutils.args("--deployment", dest="deployment", type=str,
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
+    @cliutils.args("--task", "--filename", metavar="<path>",
+                   help="Path to the input task file")
+    @cliutils.args("--task-args", dest="task_args", metavar="<json>",
                    help="Input task args (dict in json). These args are used "
                         "to render input task that is jinja2 template.")
-    @cliutils.args("--task-args-file", dest="task_args_file",
+    @cliutils.args("--task-args-file", dest="task_args_file", metavar="<path>",
                    help="Path to the file with input task args (dict in "
                         "json/yaml). These args are used to render input "
                         "task that is jinja2 template.")
@@ -271,7 +272,7 @@ class TaskCommands(object):
         Returns current status of task
         """
 
-        task = db.task_get(task_id)
+        task = api.Task.get(task_id)
         print(_("Task %(task_id)s: %(status)s")
               % {"task_id": task_id, "status": task["status"]})
 
@@ -290,7 +291,8 @@ class TaskCommands(object):
         Prints detailed information of task.
         """
 
-        def _print_iterations_data(raw_data):
+        def _print_iterations_data(result):
+            raw_data = result["data"]["raw"]
             headers = ["iteration", "full duration"]
             float_cols = ["full duration"]
             atomic_actions = []
@@ -315,38 +317,36 @@ class TaskCommands(object):
                 if r["atomic_actions"]:
                     for action in atomic_actions:
                         dlist.append(r["atomic_actions"].get(action) or 0)
-                table_rows.append(rutils.Struct(**dict(zip(headers, dlist))))
+                table_rows.append(rutils.Struct(**dict(zip(headers,
+                                                           dlist))))
             cliutils.print_list(table_rows,
                                 fields=headers,
                                 formatters=formatters)
             print()
 
-        task = db.task_get_detailed(task_id)
-
-        if task is None:
-            print("The task %s can not be found" % task_id)
-            return(1)
-
-        print()
-        print("-" * 80)
-        print(_("Task %(task_id)s: %(status)s")
-              % {"task_id": task_id, "status": task["status"]})
-
-        if task["status"] == consts.TaskStatus.FAILED:
+        def _print_task_info(task):
+            print()
             print("-" * 80)
-            verification = yaml.safe_load(task["verification_log"])
+            print(_("Task %(task_id)s: %(status)s")
+                  % {"task_id": task_id, "status": task["status"]})
 
-            if not logging.is_debug():
-                print(verification[0])
-                print(verification[1])
-                print()
-                print(_("For more details run:\nrally -vd task detailed %s")
-                      % task["uuid"])
-            else:
-                print(yaml.safe_load(verification[2]))
-            return
+            if task["status"] == consts.TaskStatus.FAILED:
+                print("-" * 80)
+                verification = yaml.safe_load(task["verification_log"])
 
-        for result in task["results"]:
+                if not logging.is_debug():
+                    print(verification[0])
+                    print(verification[1])
+                    print()
+                    print(_("For more details run:\n"
+                            "rally -vd task detailed %s")
+                          % task["uuid"])
+                else:
+                    print(yaml.safe_load(verification[2]))
+                return False
+            return True
+
+        def _print_scenario_args(result):
             key = result["key"]
             print("-" * 80)
             print()
@@ -355,6 +355,7 @@ class TaskCommands(object):
             print("args values:")
             print(json.dumps(key["kw"], indent=2))
 
+        def _print_summrized_result(result):
             raw = result["data"]["raw"]
             table_cols = ["action", "min", "median",
                           "90%ile", "95%ile", "max",
@@ -383,40 +384,64 @@ class TaskCommands(object):
                 else:
                     data = [action, None, None, None, None, None, None,
                             "0.0%", len(raw)]
-                table_rows.append(rutils.Struct(**dict(zip(table_cols, data))))
+                table_rows.append(rutils.Struct(**dict(zip(table_cols,
+                                                           data))))
 
             cliutils.print_list(table_rows, fields=table_cols,
                                 formatters=formatters,
                                 table_label="Response Times (sec)",
                                 sortby_index=None)
 
-            if iterations_data:
-                _print_iterations_data(raw)
-
-            print(_("Load duration: %s") % result["data"]["load_duration"])
-            print(_("Full duration: %s") % result["data"]["full_duration"])
-
+        def _print_ssrs_result(result):
+            raw = result["data"]["raw"]
             # NOTE(hughsaunders): ssrs=scenario specific results
             ssrs = []
-            for result in raw:
-                data = result["scenario_output"].get("data")
-                if data:
-                    ssrs.append(data)
-            if ssrs:
-                keys = set()
-                for ssr in ssrs:
-                    keys.update(ssr.keys())
-                headers = ["key", "min", "median",
-                           "90%ile", "95%ile", "max",
-                           "avg"]
-                float_cols = ["min", "median", "90%ile",
-                              "95%ile", "max", "avg"]
-                formatters = dict(zip(float_cols,
-                                  [cliutils.pretty_float_formatter(col, 3)
-                                   for col in float_cols]))
-                table_rows = []
-                for key in keys:
-                    values = [float(ssr[key]) for ssr in ssrs if key in ssr]
+            for itr in raw:
+                if "output" not in itr:
+                    itr["output"] = {"additive": [], "complete": []}
+
+                    # NOTE(amaretskiy): "scenario_output" is supported
+                    #   for backward compatibility
+                    if ("scenario_output" in itr
+                            and itr["scenario_output"]["data"]):
+                        itr["output"]["additive"].append(
+                            {"data": itr["scenario_output"]["data"].items(),
+                             "title": "Scenario output",
+                             "description": "",
+                             "chart_plugin": "StackedArea"})
+                        del itr["scenario_output"]
+
+                for idx, additive in enumerate(itr["output"]["additive"]):
+                    try:
+                        for key, value in additive["data"]:
+                            ssrs[idx]["data"][key].append(value)
+                    except IndexError:
+                        data = {}
+                        keys = []
+                        for key, value in additive["data"]:
+                            if key not in data:
+                                data[key] = []
+                                keys.append(key)
+                            data[key].append(value)
+                        ssrs.append({"title": additive["title"],
+                                     "keys": keys,
+                                     "data": data})
+            if not ssrs:
+                return
+
+            print("\nScenario Specific Results\n")
+
+            headers = ["key", "min", "median", "90%ile", "95%ile",
+                       "max", "avg"]
+            float_cols = ["min", "median", "90%ile", "95%ile", "max", "avg"]
+            formatters = dict(zip(float_cols,
+                              [cliutils.pretty_float_formatter(col, 3)
+                               for col in float_cols]))
+
+            for ssr in ssrs:
+                rows = []
+                for key in ssr["keys"]:
+                    values = ssr["data"][key]
 
                     if values:
                         row = [str(key),
@@ -428,29 +453,45 @@ class TaskCommands(object):
                                round(utils.mean(values), 3)]
                     else:
                         row = [str(key)] + ["n/a"] * 6
-                    table_rows.append(rutils.Struct(**dict(zip(headers, row))))
-                print("\nScenario Specific Results\n")
-                cliutils.print_list(table_rows,
+                    rows.append(rutils.Struct(**dict(zip(headers, row))))
+
+                cliutils.print_list(rows,
                                     fields=headers,
                                     formatters=formatters,
-                                    table_label="Response Times (sec)")
+                                    table_label=ssr["title"])
+                print()
 
-                for result in raw:
-                    errors = result["scenario_output"].get("errors")
-                    if errors:
-                        print(errors)
+        def _print_hints(task):
+            print()
+            print("HINTS:")
+            print(_("* To plot HTML graphics with this data, run:"))
+            print("\trally task report %s --out output.html" % task["uuid"])
+            print()
+            print(_("* To generate a JUnit report, run:"))
+            print("\trally task report %s --junit --out output.xml" %
+                  task["uuid"])
+            print()
+            print(_("* To get raw JSON output of task results, run:"))
+            print("\trally task results %s\n" % task["uuid"])
 
-        print()
-        print("HINTS:")
-        print(_("* To plot HTML graphics with this data, run:"))
-        print("\trally task report %s --out output.html" % task["uuid"])
-        print()
-        print(_("* To generate a JUnit report, run:"))
-        print("\trally task report %s --junit --out output.xml" %
-              task["uuid"])
-        print()
-        print(_("* To get raw JSON output of task results, run:"))
-        print("\trally task results %s\n" % task["uuid"])
+        task = api.Task.get_detailed(task_id)
+
+        if task is None:
+            print("The task %s can not be found" % task_id)
+            return(1)
+
+        if _print_task_info(task):
+            for result in task["results"]:
+                _print_scenario_args(result)
+                _print_summrized_result(result)
+                if iterations_data:
+                    _print_iterations_data(result)
+                _print_ssrs_result(result)
+                print(_("Load duration: %s") %
+                      result["data"]["load_duration"])
+                print(_("Full duration: %s") %
+                      result["data"]["full_duration"])
+            _print_hints(task)
 
     @cliutils.args("--uuid", type=str, dest="task_id", help="uuid of task")
     @envutils.with_default_task_id
@@ -466,7 +507,7 @@ class TaskCommands(object):
                     "sla": x["data"]["sla"],
                     "load_duration": x["data"]["load_duration"],
                     "full_duration": x["data"]["full_duration"]}
-                   for x in objects.Task.get(task_id).get_results()]
+                   for x in api.Task.get(task_id).get_results()]
 
         if results:
             print(json.dumps(results, sort_keys=True, indent=4))
@@ -476,9 +517,9 @@ class TaskCommands(object):
                 task_id, consts.TaskStatus.FAILED, consts.TaskStatus.FINISHED))
             return(1)
 
-    @cliutils.args("--deployment", type=str, dest="deployment",
-                   help="List tasks from specified deployment."
-                   "By default tasks listed from active deployment.")
+    @cliutils.args("--deployment", dest="deployment", type=str,
+                   metavar="<uuid>", required=False,
+                   help="UUID or name of a deployment.")
     @cliutils.args("--all-deployments", action="store_true",
                    dest="all_deployments",
                    help="List tasks from all deployments.")
@@ -518,7 +559,7 @@ class TaskCommands(object):
         if not all_deployments:
             filters.setdefault("deployment", deployment)
 
-        task_list = [task.to_dict() for task in objects.Task.list(**filters)]
+        task_list = [task.to_dict() for task in api.Task.list(**filters)]
 
         for x in task_list:
             x["duration"] = x["updated_at"] - x["created_at"]
@@ -543,17 +584,23 @@ class TaskCommands(object):
 
     @cliutils.args("--tasks", dest="tasks", nargs="+",
                    help="uuids of tasks or json files with task results")
-    @cliutils.args("--out", type=str, dest="out", required=True,
+    @cliutils.args("--out", metavar="<path>",
+                   type=str, dest="out", required=False,
                    help="Path to output file.")
     @cliutils.args("--open", dest="open_it", action="store_true",
                    help="Open it in browser.")
     @cliutils.args("--html", dest="out_format",
                    action="store_const", const="html",
                    help="Generate the report in HTML.")
+    @cliutils.args("--html-static", dest="out_format",
+                   action="store_const", const="html_static",
+                   help=("Generate the report in HTML with embedded "
+                         "JS and CSS, so it will not depend on "
+                         "the Internet availability."))
     @cliutils.args("--junit", dest="out_format",
                    action="store_const", const="junit",
                    help="Generate the report in the JUnit format.")
-    @envutils.default_from_global("tasks", envutils.ENV_TASK, "--uuid")
+    @envutils.default_from_global("tasks", envutils.ENV_TASK, "tasks")
     @cliutils.suppress_warnings
     def report(self, tasks=None, out=None, open_it=False, out_format="html"):
         """Generate report file for specified task.
@@ -562,7 +609,7 @@ class TaskCommands(object):
         :param tasks: list, UUIDs od tasks or pathes files with tasks results
         :param out: str, output file name
         :param open_it: bool, whether to open output file in web browser
-        :param out_format: output format (junit or html)
+        :param out_format: output format (junit, html or html_static)
         """
 
         tasks = isinstance(tasks, list) and tasks or [tasks]
@@ -579,7 +626,7 @@ class TaskCommands(object):
                         try:
                             jsonschema.validate(
                                 result,
-                                objects.task.TASK_RESULT_SCHEMA)
+                                api.Task.TASK_RESULT_SCHEMA)
                         except jsonschema.ValidationError as e:
                             print(_("ERROR: Invalid task result format in %s")
                                   % task_file_or_uuid, file=sys.stderr)
@@ -593,7 +640,7 @@ class TaskCommands(object):
                                "result": x["data"]["raw"],
                                "load_duration": x["data"]["load_duration"],
                                "full_duration": x["data"]["full_duration"]},
-                    objects.Task.get(task_file_or_uuid).get_results())
+                    api.Task.get(task_file_or_uuid).get_results())
             else:
                 print(_("ERROR: Invalid UUID or file name passed: %s"
                         ) % task_file_or_uuid,
@@ -609,13 +656,9 @@ class TaskCommands(object):
                     processed_names[task_result["key"]["name"]] = 0
                 results.append(task_result)
 
-        output_file = os.path.expanduser(out)
-
-        if out_format == "html":
-            with open(output_file, "w+") as f:
-                f.write(plot.plot(results))
-            if open_it:
-                webbrowser.open_new_tab("file://" + os.path.realpath(out))
+        if out_format.startswith("html"):
+            result = plot.plot(results,
+                               include_libs=(out_format == "html_static"))
         elif out_format == "junit":
             test_suite = junit.JUnit("Rally test suite")
             for result in results:
@@ -628,12 +671,20 @@ class TaskCommands(object):
                     outcome = junit.JUnit.SUCCESS
                 test_suite.add_test(result["key"]["name"],
                                     result["full_duration"], outcome, message)
-            with open(output_file, "w+") as f:
-                f.write(test_suite.to_xml())
+            result = test_suite.to_xml()
         else:
-            print(_("Invalid output format: %s") % out_format,
-                  file=sys.stderr)
+            print(_("Invalid output format: %s") % out_format, file=sys.stderr)
             return 1
+
+        if out:
+            output_file = os.path.expanduser(out)
+
+            with open(output_file, "w+") as f:
+                f.write(result)
+            if open_it:
+                webbrowser.open_new_tab("file://" + os.path.realpath(out))
+        else:
+            print(result)
 
     @cliutils.args("--force", action="store_true", help="force delete")
     @cliutils.args("--uuid", type=str, dest="task_id", nargs="*",
@@ -673,7 +724,7 @@ class TaskCommands(object):
         :param task_id: Task uuid.
         :returns: Number of failed criteria.
         """
-        results = objects.Task.get(task_id).get_results()
+        results = api.Task.get(task_id).get_results()
         failed_criteria = 0
         data = []
         STATUS_PASS = "PASS"
@@ -695,13 +746,15 @@ class TaskCommands(object):
                                        "status", "detail"))
         return failed_criteria
 
-    @cliutils.args("--task", type=str, dest="task", required=False,
+    @cliutils.args("--uuid", type=str, dest="task_id",
                    help="UUID of the task")
-    def use(self, task):
+    @cliutils.deprecated_args("--task", dest="task_id", type=str,
+                              release="0.2.0", alternative="--uuid")
+    def use(self, task_id):
         """Set active task.
 
-        :param task: Task uuid.
+        :param task_id: Task uuid.
         """
-        print("Using task: %s" % task)
-        db.task_get(task)
-        fileutils.update_globals_file("RALLY_TASK", task)
+        print("Using task: %s" % task_id)
+        api.Task.get(task_id)
+        fileutils.update_globals_file("RALLY_TASK", task_id)

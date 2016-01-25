@@ -43,6 +43,63 @@ class TaskTestCase(unittest.TestCase):
             ]
         }
 
+    def _get_sample_task_config_v2(self):
+        return {
+            "version": 2,
+            "title": "Dummy task",
+            "tags": ["dummy", "functional_test"],
+            "subtasks": [
+                {
+                    "title": "first-subtask",
+                    "group": "Dummy group",
+                    "description": "The first subtask in dummy task",
+                    "tags": ["dummy", "functional_test"],
+                    "run_in_parallel": False,
+                    "workloads": [{
+                        "name": "Dummy.dummy",
+                        "args": {
+                            "sleep": 0
+                        },
+                        "runner": {
+                            "type": "constant",
+                            "times": 10,
+                            "concurrency": 2
+                        },
+                        "context": {
+                            "users": {
+                                "tenants": 3,
+                                "users_per_tenant": 2
+                            }
+                        }
+                    }]
+                },
+                {
+                    "title": "second-subtask",
+                    "group": "Dummy group",
+                    "description": "The second subtask in dummy task",
+                    "tags": ["dummy", "functional_test"],
+                    "run_in_parallel": False,
+                    "workloads": [{
+                        "name": "Dummy.dummy",
+                        "args": {
+                            "sleep": 1
+                        },
+                        "runner": {
+                            "type": "constant",
+                            "times": 10,
+                            "concurrency": 2
+                        },
+                        "context": {
+                            "users": {
+                                "tenants": 3,
+                                "users_per_tenant": 2
+                            }
+                        }
+                    }]
+                }
+            ]
+        }
+
     def _get_deployment_uuid(self, output):
         return re.search(
             r"Using deployment: (?P<uuid>[0-9a-f\-]{36})",
@@ -129,14 +186,28 @@ class TaskTestCase(unittest.TestCase):
         self.assertRaises(utils.RallyCliError,
                           rally, "task status --uuid %s" % FAKE_TASK_UUID)
 
+    def _assert_html_report_libs_are_embedded(self, file_path, expected=True):
+
+        embedded_signatures = ["Copyright (c) 2011-2014 Novus Partners, Inc.",
+                               "AngularJS v1.3.3",
+                               "Copyright (c) 2010-2015, Michael Bostock"]
+        external_signatures = ["<script type=\"text/javascript\" src=",
+                               "<link rel=\"stylesheet\" href="]
+        html = open(file_path).read()
+        result_embedded = all([sig in html for sig in embedded_signatures])
+        result_external = all([sig in html for sig in external_signatures])
+        self.assertEqual(expected, result_embedded)
+        self.assertEqual(not expected, result_external)
+
     def test_report_one_uuid(self):
         rally = utils.Rally()
         cfg = self._get_sample_task_config()
         config = utils.TaskConfig(cfg)
         rally("task start --task %s" % config.filename)
         rally("task report --out %s" % rally.gen_report_path(extension="html"))
-        self.assertTrue(os.path.exists(
-            rally.gen_report_path(extension="html")))
+        html_report = rally.gen_report_path(extension="html")
+        self.assertTrue(os.path.exists(html_report))
+        self._assert_html_report_libs_are_embedded(html_report, False)
         self.assertRaises(utils.RallyCliError,
                           rally, "task report --report %s" % FAKE_TASK_UUID)
         rally("task report --junit --out %s" %
@@ -156,10 +227,11 @@ class TaskTestCase(unittest.TestCase):
             for line in res.splitlines():
                 if "finished" in line:
                     task_uuids.append(line.split(" ")[1][:-1])
-        rally("task report --tasks %s --out %s" % (
-              " ".join(task_uuids), rally.gen_report_path(extension="html")))
-        self.assertTrue(os.path.exists(
-            rally.gen_report_path(extension="html")))
+        html_report = rally.gen_report_path(extension="html")
+        rally("task report --tasks %s --out %s" % (" ".join(task_uuids),
+                                                   html_report))
+        self.assertTrue(os.path.exists(html_report))
+        self._assert_html_report_libs_are_embedded(html_report, False)
 
     def test_report_bunch_files(self):
         rally = utils.Rally()
@@ -174,10 +246,11 @@ class TaskTestCase(unittest.TestCase):
                 os.remove(path)
             rally("task results", report_path=path, raw=True)
 
+        html_report = rally.gen_report_path(extension="html")
         rally("task report --tasks %s --out %s" % (
-              " ".join(files), rally.gen_report_path(extension="html")))
-        self.assertTrue(os.path.exists(
-            rally.gen_report_path(extension="html")))
+              " ".join(files), html_report))
+        self.assertTrue(os.path.exists(html_report))
+        self._assert_html_report_libs_are_embedded(html_report, False)
 
     def test_report_one_uuid_one_file(self):
         rally = utils.Rally()
@@ -198,13 +271,24 @@ class TaskTestCase(unittest.TestCase):
         else:
             return 1
 
+        html_report = rally.gen_report_path(extension="html")
         rally("task report --tasks"
               " %s %s --out %s" % (task_result_file, task_uuid,
-                                   rally.gen_report_path(extension="html")))
-        self.assertTrue(os.path.exists(
-            rally.gen_report_path(extension="html")))
+                                   html_report))
+        self.assertTrue(os.path.exists(html_report))
         self.assertRaises(utils.RallyCliError,
                           rally, "task report --report %s" % FAKE_TASK_UUID)
+        self._assert_html_report_libs_are_embedded(html_report, False)
+
+    def test_report_one_uuid_with_static_libs(self):
+        rally = utils.Rally()
+        cfg = self._get_sample_task_config()
+        config = utils.TaskConfig(cfg)
+        rally("task start --task %s" % config.filename)
+        html_report = rally.gen_report_path(extension="html")
+        rally("task report --out %s --html-static" % html_report)
+        self.assertTrue(os.path.exists(html_report))
+        self._assert_html_report_libs_are_embedded(html_report)
 
     def test_delete(self):
         rally = utils.Rally()
@@ -643,6 +727,19 @@ class TaskTestCase(unittest.TestCase):
         current_task = utils.get_global("RALLY_TASK", rally.env)
         self.assertEqual(uuid, current_task)
 
+    def test_start_v2(self):
+        rally = utils.Rally()
+        deployment_id = utils.get_global("RALLY_DEPLOYMENT", rally.env)
+        cfg = self._get_sample_task_config_v2()
+        config = utils.TaskConfig(cfg)
+        output = rally(("task start --task %(task_file)s "
+                        "--deployment %(deployment_id)s") %
+                       {"task_file": config.filename,
+                        "deployment_id": deployment_id})
+        result = re.search(
+            r"(?P<task_id>[0-9a-f\-]{36}): started", output)
+        self.assertIsNotNone(result)
+
 
 class SLATestCase(unittest.TestCase):
 
@@ -652,7 +749,7 @@ class SLATestCase(unittest.TestCase):
             "KeystoneBasic.create_and_list_users": [
                 {
                     "args": {
-                        "name_length": 10
+                        "enabled": True
                     },
                     "runner": {
                         "type": "constant",

@@ -33,7 +33,7 @@ class ActionTimer(utils.Timer):
     """A class to measure the duration of atomic operations
 
     This would simplify the way measure atomic operation duration
-    in certain cases. For example if we want to get the duration
+    in certain cases. For example, if we want to get the duration
     for each operation which runs in an iteration
     for i in range(repetitions):
         with atomic.ActionTimer(instance_of_action_timer, "name_of_action"):
@@ -48,27 +48,27 @@ class ActionTimer(utils.Timer):
         """
         super(ActionTimer, self).__init__()
         self.instance = instance
-        self.name = self._get_atomic_action_name(name)
+        self.name = self._get_atomic_action_name(instance, name)
         self.instance._atomic_actions[self.name] = None
 
-    def _get_atomic_action_name(self, name):
+    @classmethod
+    def _get_atomic_action_name(cls, instance, name):
         # TODO(boris-42): It was quite bad idea to store atomic actions
         #                 inside {}. We should refactor this in 0.2.0 release
         #                 and store them inside array, that will allow us to
         #                 store atomic actions with the same name
-        if name not in self.instance._atomic_actions:
+        if name not in instance._atomic_actions:
             return name
 
         name_template = name + " (%i)"
         i = 2
-        while name_template % i in self.instance._atomic_actions:
+        while name_template % i in instance._atomic_actions:
             i += 1
         return name_template % i
 
     def __exit__(self, type_, value, tb):
         super(ActionTimer, self).__exit__(type_, value, tb)
-        if type_ is None:
-            self.instance._atomic_actions[self.name] = self.duration()
+        self.instance._atomic_actions[self.name] = self.duration()
 
 
 def action_timer(name):
@@ -81,6 +81,37 @@ def action_timer(name):
         @functools.wraps(func)
         def func_atomic_actions(self, *args, **kwargs):
             with ActionTimer(self, name):
+                f = func(self, *args, **kwargs)
+            return f
+        return func_atomic_actions
+    return wrap
+
+
+def optional_action_timer(name, argument_name="atomic_action", default=True):
+    """Optionally provide measure of execution time.
+
+    Decorates methods of the Scenario class. This provides duration in
+    seconds of each atomic action. When the decorated function is
+    called, this inspects the kwarg named by ``argument_name`` and
+    optionally sets an ActionTimer around the function call.
+
+    The ``atomic_action`` keyword argument does not need to be added
+    to the function; it will be popped from the kwargs dict by the
+    wrapper.
+
+    :param name: The name of the timer
+    :param argument_name: The name of the kwarg to inspect to
+                          determine if a timer should be set.
+    :param default: Whether or not to set a timer if ``argument_name``
+                    is not present.
+    """
+    def wrap(func):
+        @functools.wraps(func)
+        def func_atomic_actions(self, *args, **kwargs):
+            if kwargs.pop(argument_name, default):
+                with ActionTimer(self, name):
+                    f = func(self, *args, **kwargs)
+            else:
                 f = func(self, *args, **kwargs)
             return f
         return func_atomic_actions

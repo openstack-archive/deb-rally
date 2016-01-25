@@ -16,7 +16,7 @@
 from oslo_config import cfg
 
 from rally.common.i18n import _
-from rally.common import log
+from rally.common import logging
 from rally.common import utils
 from rally import consts as rally_consts
 from rally import exceptions
@@ -25,7 +25,7 @@ from rally.plugins.openstack.scenarios.manila import utils as manila_utils
 from rally.task import context
 
 CONF = cfg.CONF
-LOG = log.getLogger(__name__)
+LOG = logging.getLogger(__name__)
 
 CONTEXT_NAME = consts.SHARE_NETWORKS_CONTEXT_NAME
 
@@ -54,7 +54,7 @@ class ManilaShareNetworks(context.Context):
             # ]
             # Also, make sure that all 'existing users' in appropriate
             # registered deployment have share networks if its usage is
-            # enbaled, else Rally will randomly take users that does not
+            # enabled, else Rally will randomly take users that does not
             # satisfy criteria.
             "share_networks": {"type": "object"},
         },
@@ -124,7 +124,8 @@ class ManilaShareNetworks(context.Context):
             self.context["tenants"][tenant_id][CONTEXT_NAME]["sn_iterator"] = (
                 utils.RAMInt())
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `%s`") % CONTEXT_NAME)
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `%s`")
+                              % CONTEXT_NAME)
     def setup(self):
         self.context[CONTEXT_NAME] = {}
         if not self.config["use_share_networks"]:
@@ -135,7 +136,7 @@ class ManilaShareNetworks(context.Context):
             # TODO(vponomaryov): add support of autocreated resources
             pass
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `%s`") % CONTEXT_NAME)
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `%s`") % CONTEXT_NAME)
     def cleanup(self):
         # TODO(vponomaryov): add cleanup for autocreated resources when appear.
         return

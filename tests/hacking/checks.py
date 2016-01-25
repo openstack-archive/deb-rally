@@ -59,16 +59,20 @@ re_str_format = re.compile(r"""
 [hLl]?       # optional length modifier
 [A-z%]       # conversion modifier
 """, re.X)
+re_raises = re.compile(
+    r"\s:raise[^s] *.*$|\s:raises *:.*$|\s:raises *[^:]+$")
+re_db_import = re.compile(r"^from rally.common import db")
+re_objects_import = re.compile(r"^from rally.common import objects")
 
 
 def skip_ignored_lines(func):
 
     @functools.wraps(func)
-    def wrapper(logical_line, filename):
-        line = logical_line.strip()
+    def wrapper(logical_line, physical_line, filename):
+        line = physical_line.strip()
         if not line or line.startswith("#") or line.endswith("# noqa"):
             return
-        yield next(func(logical_line, filename))
+        yield next(func(logical_line, physical_line, filename))
 
     return wrapper
 
@@ -84,7 +88,7 @@ def _parse_assert_mock_str(line):
 
 
 @skip_ignored_lines
-def check_assert_methods_from_mock(logical_line, filename):
+def check_assert_methods_from_mock(logical_line, physical_line, filename):
     """Ensure that ``assert_*`` methods from ``mock`` library is used correctly
 
     N301 - base error number
@@ -130,13 +134,15 @@ def check_assert_methods_from_mock(logical_line, filename):
 
 
 @skip_ignored_lines
-def check_import_of_logging(logical_line, filename):
+def check_import_of_logging(logical_line, physical_line, filename):
     """Check correctness import of logging module
 
     N310
     """
 
-    excluded_files = ["./rally/common/log.py", "./tests/unit/test_log.py"]
+    excluded_files = ["./rally/common/logging.py",
+                      "./tests/unit/test_logging.py",
+                      "./tests/ci/rally_verify.py"]
 
     forbidden_imports = ["from oslo_log",
                          "import oslo_log",
@@ -146,11 +152,11 @@ def check_import_of_logging(logical_line, filename):
         for forbidden_import in forbidden_imports:
             if logical_line.startswith(forbidden_import):
                 yield (0, "N310 Wrong module for logging is imported. Please "
-                          "use `rally.common.log` instead.")
+                          "use `rally.common.logging` instead.")
 
 
 @skip_ignored_lines
-def no_translate_debug_logs(logical_line, filename):
+def no_translate_debug_logs(logical_line, physical_line, filename):
     """Check for "LOG.debug(_("
 
     As per our translation policy,
@@ -168,7 +174,7 @@ def no_translate_debug_logs(logical_line, filename):
 
 
 @skip_ignored_lines
-def no_use_conf_debug_check(logical_line, filename):
+def no_use_conf_debug_check(logical_line, physical_line, filename):
     """Check for "cfg.CONF.debug"
 
     Rally has two DEBUG level:
@@ -178,17 +184,17 @@ def no_use_conf_debug_check(logical_line, filename):
 
     N312
     """
-    excluded_files = ["./rally/common/log.py"]
+    excluded_files = ["./rally/common/logging.py"]
 
     point = logical_line.find("CONF.debug")
     if point != -1 and filename not in excluded_files:
         yield(point, "N312 Don't use `CONF.debug`. "
-                     "Function `rally.common.log.is_debug` "
+                     "Function `rally.common.logging.is_debug` "
                      "should be used instead.")
 
 
 @skip_ignored_lines
-def assert_true_instance(logical_line, filename):
+def assert_true_instance(logical_line, physical_line, filename):
     """Check for assertTrue(isinstance(a, b)) sentences
 
     N320
@@ -199,7 +205,7 @@ def assert_true_instance(logical_line, filename):
 
 
 @skip_ignored_lines
-def assert_equal_type(logical_line, filename):
+def assert_equal_type(logical_line, physical_line, filename):
     """Check for assertEqual(type(A), B) sentences
 
     N321
@@ -210,7 +216,7 @@ def assert_equal_type(logical_line, filename):
 
 
 @skip_ignored_lines
-def assert_equal_none(logical_line, filename):
+def assert_equal_none(logical_line, physical_line, filename):
     """Check for assertEqual(A, None) or assertEqual(None, A) sentences
 
     N322
@@ -224,7 +230,7 @@ def assert_equal_none(logical_line, filename):
 
 
 @skip_ignored_lines
-def assert_true_or_false_with_in(logical_line, filename):
+def assert_true_or_false_with_in(logical_line, physical_line, filename):
     """Check assertTrue/False(A in/not in B) with collection contents
 
     Check for assertTrue/False(A in B), assertTrue/False(A not in B),
@@ -242,7 +248,7 @@ def assert_true_or_false_with_in(logical_line, filename):
 
 
 @skip_ignored_lines
-def assert_equal_in(logical_line, filename):
+def assert_equal_in(logical_line, physical_line, filename):
     """Check assertEqual(A in/not in B, True/False) with collection contents
 
     Check for assertEqual(A in B, True/False), assertEqual(True/False, A in B),
@@ -260,7 +266,8 @@ def assert_equal_in(logical_line, filename):
 
 
 @skip_ignored_lines
-def check_no_direct_rally_objects_import(logical_line, filename):
+def check_no_direct_rally_objects_import(logical_line, physical_line,
+                                         filename):
     """Check if rally.common.objects are properly imported.
 
     If you import "from rally.common import objects" you are able to use
@@ -271,6 +278,9 @@ def check_no_direct_rally_objects_import(logical_line, filename):
     if filename == "./rally/common/objects/__init__.py":
         return
 
+    if filename == "./rally/common/objects/endpoint.py":
+        return
+
     if (logical_line.startswith("from rally.common.objects")
        or logical_line.startswith("import rally.common.objects.")):
         yield (0, "N340: Import objects module:"
@@ -279,7 +289,7 @@ def check_no_direct_rally_objects_import(logical_line, filename):
 
 
 @skip_ignored_lines
-def check_no_oslo_deprecated_import(logical_line, filename):
+def check_no_oslo_deprecated_import(logical_line, physical_line, filename):
     """Check if oslo.foo packages are not imported instead of oslo_foo ones.
 
     Libraries from oslo.foo namespace are deprecated because of namespace
@@ -295,7 +305,7 @@ def check_no_oslo_deprecated_import(logical_line, filename):
 
 
 @skip_ignored_lines
-def check_quotes(logical_line, filename):
+def check_quotes(logical_line, physical_line, filename):
     """Check that single quotation marks are not used
 
     N350
@@ -348,7 +358,7 @@ def check_quotes(logical_line, filename):
 
 
 @skip_ignored_lines
-def check_no_constructor_data_struct(logical_line, filename):
+def check_no_constructor_data_struct(logical_line, physical_line, filename):
     """Check that data structs (lists, dicts) are declared using literals
 
     N351
@@ -430,7 +440,7 @@ def check_dict_formatting_in_string(logical_line, tokens):
 
 
 @skip_ignored_lines
-def check_using_unicode(logical_line, filename):
+def check_using_unicode(logical_line, physical_line, filename):
     """Check crosspython unicode usage
 
     N353
@@ -439,6 +449,48 @@ def check_using_unicode(logical_line, filename):
     if re.search(r"\bunicode\(", logical_line):
         yield (0, "N353 'unicode' function is absent in python3. Please "
                   "use 'six.text_type' instead.")
+
+
+def check_raises(physical_line, filename):
+    """Check raises usage
+
+    N354
+    """
+
+    ignored_files = ["./tests/unit/test_hacking.py",
+                     "./tests/hacking/checks.py"]
+    if filename not in ignored_files:
+        if re_raises.search(physical_line):
+            return (0, "N354 ':Please use ':raises Exception: conditions' "
+                       "in docstrings.")
+
+
+@skip_ignored_lines
+def check_db_imports_in_cli(logical_line, physical_line, filename):
+    """Ensure that CLI modules do not use ``rally.common.db``
+
+    N360
+    """
+    if (not filename.startswith("./rally/cli")
+            or filename == "./rally/cli/manage.py"):
+        return
+    if re_db_import.search(logical_line):
+        yield (0, "N360 CLI modules do not allow to work with "
+                  "`rally.common.db``.")
+
+
+@skip_ignored_lines
+def check_objects_imports_in_cli(logical_line, physical_line, filename):
+    """Ensure that CLI modules do not use ``rally.common.objects``
+
+    N361
+    """
+    if (not filename.startswith("./rally/cli")
+            or filename == "./rally/cli/commands/show.py"):
+        return
+    if re_objects_import.search(logical_line):
+        yield (0, "N360 CLI modules do not allow to work with "
+                  "`rally.common.objects``.")
 
 
 def factory(register):
@@ -457,3 +509,6 @@ def factory(register):
     register(check_no_constructor_data_struct)
     register(check_dict_formatting_in_string)
     register(check_using_unicode)
+    register(check_raises)
+    register(check_db_imports_in_cli)
+    register(check_objects_imports_in_cli)

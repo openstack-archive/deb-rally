@@ -11,9 +11,9 @@
 #    under the License.
 
 import random
-import time
 
 from rally.common.i18n import _
+from rally.common import utils
 from rally import exceptions
 from rally.task import atomic
 from rally.task import scenario
@@ -37,13 +37,12 @@ class Dummy(scenario.Scenario):
 
         :param sleep: idle time of method (in seconds).
         """
-        if sleep:
-            time.sleep(sleep)
+        utils.interruptable_sleep(sleep)
 
     @validation.number("size_of_message",
                        minval=1, integer_only=True, nullable=True)
     @scenario.configure()
-    def dummy_exception(self, size_of_message=1, sleep=0):
+    def dummy_exception(self, size_of_message=1, sleep=0, message=""):
         """Throw an exception.
 
         Dummy.dummy_exception can be used for test if exceptions are processed
@@ -52,12 +51,13 @@ class Dummy(scenario.Scenario):
 
         :param size_of_message: int size of the exception message
         :param sleep: idle time of method (in seconds).
-        :raises: DummyScenarioException
+        :param message: message of the exception
+        :raises DummyScenarioException: raise exception for test
         """
-        if sleep:
-            time.sleep(sleep)
+        utils.interruptable_sleep(sleep)
 
-        raise DummyScenarioException("M" * size_of_message)
+        message = message or "M" * size_of_message
+        raise DummyScenarioException(message)
 
     @validation.number("exception_probability",
                        minval=0, maxval=1, integer_only=False, nullable=True)
@@ -81,6 +81,63 @@ class Dummy(scenario.Scenario):
             )
 
     @scenario.configure()
+    def dummy_output(self, random_range=25):
+        """Generate dummy output.
+
+        This scenario generates example of output data.
+        :param random_range: max int limit for generated random values
+        """
+        rand = lambda n: [n, random.randint(1, random_range)]
+        desc = "This is a description text for %s"
+
+        self.add_output(additive={"title": "Additive Stat Table",
+                                  "description": desc % "Additive Stat Table",
+                                  "chart_plugin": "StatsTable",
+                                  "data": [rand("foo stat"), rand("bar stat"),
+                                           rand("spam stat")]})
+
+        self.add_output(additive={"title": "Additive Foo StackedArea",
+                                  "description": (
+                                      desc % "Additive Foo StackedArea"),
+                                  "chart_plugin": "StackedArea",
+                                  "data": [rand("foo 1"), rand("foo 2")]})
+
+        self.add_output(additive={"title": ("Additive Bar StackedArea "
+                                            "(no description)"),
+                                  "description": "",
+                                  "chart_plugin": "StackedArea",
+                                  "data": [rand("bar %d" % i)
+                                           for i in range(1, 7)]})
+
+        self.add_output(additive={"title": "Additive Spam Pie",
+                                  "description": desc % "Additive Spam Pie",
+                                  "chart_plugin": "Pie",
+                                  "data": [rand("spam %d" % i)
+                                           for i in range(1, 4)]},
+                        complete={"title": "Complete StackedArea",
+                                  "description": desc % "Complete StackedArea",
+                                  "chart_plugin": "StackedArea",
+                                  "data": [
+                                      [name, [rand(i) for i in range(30)]]
+                                      for name in ("alpha", "beta", "gamma")]})
+
+        self.add_output(
+            complete={"title": "Complete Pie (no description)",
+                      "description": "",
+                      "chart_plugin": "Pie",
+                      "data": [rand("delta"), rand("epsilon"), rand("zeta"),
+                               rand("theta"), rand("lambda"), rand("omega")]})
+
+        data = {"cols": ["mu column", "xi column", "pi column",
+                         "tau column", "chi column"],
+                "rows": [([name + " row"] + [rand(i)[1] for i in range(4)])
+                         for name in ("iota", "nu", "rho", "phi", "psi")]}
+        self.add_output(complete={"title": "Complete Table",
+                                  "description": desc % "Complete Table",
+                                  "chart_plugin": "Table",
+                                  "data": data})
+
+    @scenario.configure()
     def dummy_with_scenario_output(self):
         """Return a dummy scenario output.
 
@@ -98,7 +155,7 @@ class Dummy(scenario.Scenario):
     def _random_fail_emitter(self, exception_probability):
         """Throw an exception with given probability.
 
-        :raises: KeyError
+        :raises KeyError: when exception_probability is bigger
         """
         if random.random() < exception_probability:
             raise KeyError("Dummy test exception")

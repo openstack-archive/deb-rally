@@ -13,40 +13,34 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from __future__ import print_function
 import os.path
-import re
-import sys
 
 
-def get_template(template_path):
+def get_mako_template(template):
     import mako.lookup
-
-    templates_dir = os.path.join(os.path.dirname(__file__), "templates")
-
-    lookup_dirs = [
-        templates_dir,
-        os.path.abspath(os.path.join(templates_dir, "..", "..", ".."))
-    ]
-
-    lookup = mako.lookup.TemplateLookup(directories=lookup_dirs)
-
-    return lookup.get_template(template_path)
+    dirs = os.path.join(os.path.dirname(__file__), "templates")
+    lookup = mako.lookup.TemplateLookup(directories=[dirs])
+    return lookup.get_template(template)
 
 
-def main(*args):
-    if (len(args) < 2 or args[0] != "render"
-       or not all(re.match("^[^=]+=[^=]+$", arg) for arg in args[2:])):
-        raise ValueError(
-            "Usage: \n\t"
-            "utils.py render <lookup/path/to/template.mako> "
-            "<key-1>=<value-1> <key-2>=<value-2>\n\n\t"
-            "Where key-1,value-1 and key-2,value-2 are key pairs of template"
-        )
+def get_jinja_template(template):
+    import jinja2
 
-    render_kwargs = dict([arg.split("=") for arg in args[2:]])
-    print(get_template(args[1]).render(**render_kwargs))
+    def include_raw_file(file_name):
+        try:
+            return jinja2.Markup(loader.get_source(env, file_name)[0])
+        except jinja2.TemplateNotFound:
+            # NOTE(amaretskiy): re-raise error to make its message clear
+            raise IOError("File not found: %s" % file_name)
+
+    loader = jinja2.PackageLoader("rally.ui", "templates")
+    env = jinja2.Environment(loader=loader)
+    env.globals["include_raw_file"] = include_raw_file
+
+    return env.get_template(template)
 
 
-if __name__ == "__main__":
-    main(*sys.argv[1:])
+def get_template(template):
+    if template.endswith(".mako"):
+        return get_mako_template(template)
+    return get_jinja_template(template)

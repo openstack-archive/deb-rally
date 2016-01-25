@@ -18,9 +18,9 @@ import mock
 from neutronclient.common import exceptions as neutron_exceptions
 
 from rally.common.plugin import discover
+from rally.common import utils
 from rally.plugins.openstack.context.cleanup import base
 from rally.plugins.openstack.context.cleanup import resources
-from rally.plugins.openstack.scenarios.keystone import utils as keystone_utils
 from tests.unit import test
 
 BASE = "rally.plugins.openstack.context.cleanup.resources"
@@ -151,11 +151,15 @@ class NovaFloatingIpsBulkTestCase(test.TestCase):
         self.assertEqual(ip_range.raw_resource.address, ip_range.id())
 
     @mock.patch("%s.base.ResourceManager._manager" % BASE)
-    def test_list(self, mock_resource_manager__manager):
+    @mock.patch("rally.common.utils.name_matches_object")
+    def test_list(self, mock_name_matches_object,
+                  mock_resource_manager__manager):
         ip_range = [mock.MagicMock(), mock.MagicMock(), mock.MagicMock()]
         ip_range[0].pool = "a"
         ip_range[1].pool = "rally_fip_pool_a"
         ip_range[2].pool = "rally_fip_pool_b"
+        mock_name_matches_object.side_effect = (lambda n, o:
+                                                n.startswith("rally"))
 
         mock_resource_manager__manager().list.return_value = ip_range
         self.assertEqual(ip_range[1:], resources.NovaFloatingIpsBulk().list())
@@ -163,14 +167,23 @@ class NovaFloatingIpsBulkTestCase(test.TestCase):
 
 class NovaNetworksTestCase(test.TestCase):
 
-    @mock.patch("%s.base.ResourceManager._manager" % BASE)
-    def test_list(self, mock_resource_manager__manager):
-        network = [mock.Mock(label="a"), mock.Mock(label="rally_novanet_a"),
-                   mock.Mock(label="rally_novanet_b")]
+    @mock.patch("rally.common.plugin.discover.itersubclasses")
+    def test_list(self, mock_itersubclasses):
+        nova_nets = resources.NovaNetworks()
 
-        mock_resource_manager__manager.return_value.list.return_value = network
-        self.assertEqual(network[1:], resources.NovaNetworks().list())
-        mock_resource_manager__manager().list.assert_called_once_with()
+        networks = [mock.Mock(label="rally_abcdefgh_12345678"),
+                    mock.Mock(label="rally_12345678_abcdefgh"),
+                    mock.Mock(label="foobar")]
+        nova_nets._manager = mock.Mock()
+        nova_nets._manager.return_value.list.return_value = networks
+
+        mock_itersubclasses.return_value = iter(
+            [utils.RandomNameGeneratorMixin])
+
+        self.assertEqual(networks[:2], nova_nets.list())
+        nova_nets._manager.return_value.list.assert_called_once_with()
+        mock_itersubclasses.assert_called_once_with(
+            utils.RandomNameGeneratorMixin)
 
 
 class EC2MixinTestCase(test.TestCase):
@@ -451,22 +464,23 @@ class KeystoneMixinTestCase(test.TestCase):
             keystone_mixin.admin.keystone.return_value)
         mock_wrap().delete_some_resource.assert_called_once_with("id_a")
 
+    @mock.patch(
+        "rally.plugins.openstack.scenarios.keystone.utils.is_temporary")
     @mock.patch("%s.keystone_wrapper.wrap" % BASE)
-    def test_list(self, mock_wrap):
+    def test_list(self, mock_wrap, mock_is_temporary):
         keystone_mixin = self.get_keystone_mixin()
         keystone_mixin._resource = "some_resource2"
         keystone_mixin.admin = mock.MagicMock()
 
         result = [mock.MagicMock(), mock.MagicMock(), mock.MagicMock()]
-        prefix = keystone_utils.KeystoneScenario.RESOURCE_NAME_PREFIX
-        result[0].name = prefix + "keystone-a"
-        result[1].name = prefix + "keystone-b"
-        result[2].name = "not_a_keystone_pattern"
+        mock_is_temporary.side_effect = [True, True, False]
 
         mock_wrap().list_some_resource2s.return_value = result
 
         self.assertSequenceEqual(result[:2], keystone_mixin.list())
         mock_wrap().list_some_resource2s.assert_called_once_with()
+
+        mock_is_temporary.assert_has_calls([mock.call(r) for r in result])
 
 
 class SwiftMixinTestCase(test.TestCase):
@@ -602,17 +616,22 @@ class FuelEnvironmentTestCase(test.TestCase):
 
     @mock.patch("%s.FuelEnvironment._manager" % BASE)
     def test_is_deleted(self, mock__manager):
-        mock__manager.return_value.get.return_value = []
+        mock__manager.return_value.get.return_value = None
         fres = resources.FuelEnvironment()
         fres.id = mock.Mock()
         self.assertTrue(fres.is_deleted())
-        mock__manager.return_value.get.return_value = ["env"]
+        mock__manager.return_value.get.return_value = "env"
         self.assertFalse(fres.is_deleted())
+        mock__manager.return_value.get.assert_called_with(fres.id.return_value)
 
     @mock.patch("%s.FuelEnvironment._manager" % BASE)
-    def test_list(self, mock__manager):
+    @mock.patch("rally.common.utils.name_matches_object")
+    def test_list(self, mock_name_matches_object, mock__manager):
         envs = [{"name": "rally_one"}, {"name": "rally_two"},
                 {"name": "three"}]
         mock__manager.return_value.list.return_value = envs
+        mock_name_matches_object.side_effect = (
+            lambda n, o: n.startswith("rally_"))
+
         fres = resources.FuelEnvironment()
         self.assertEqual(envs[:-1], fres.list())

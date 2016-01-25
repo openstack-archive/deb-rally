@@ -16,8 +16,7 @@
 import novaclient.exceptions
 
 from rally.common.i18n import _
-from rally.common import log as logging
-from rally.common import utils
+from rally.common import logging
 from rally import osclients
 from rally.plugins.openstack.context.cleanup import manager as resource_manager
 from rally.task import context
@@ -28,13 +27,11 @@ LOG = logging.getLogger(__name__)
 
 @context.configure(name="keypair", order=310)
 class Keypair(context.Context):
-    KEYPAIR_NAME = "rally_ssh_key"
 
-    def _generate_keypair(self, endpoint):
-        keypair_name = "%s_%s" % (
-            self.KEYPAIR_NAME, self.context["task"]["uuid"])
+    def _generate_keypair(self, credential):
+        keypair_name = self.generate_random_name()
 
-        nova_client = osclients.Clients(endpoint).nova()
+        nova_client = osclients.Clients(credential).nova()
 
         # NOTE(hughsaunders): If keypair exists, it must be deleted as we can't
         # retrieve the private key
@@ -49,12 +46,12 @@ class Keypair(context.Context):
                 "name": keypair_name,
                 "id": keypair.id}
 
-    @utils.log_task_wrapper(LOG.info, _("Enter context: `keypair`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `keypair`"))
     def setup(self):
         for user in self.context["users"]:
-            user["keypair"] = self._generate_keypair(user["endpoint"])
+            user["keypair"] = self._generate_keypair(user["credential"])
 
-    @utils.log_task_wrapper(LOG.info, _("Exit context: `keypair`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `keypair`"))
     def cleanup(self):
         # TODO(boris-42): Delete only resources created by this context
         resource_manager.cleanup(names=["nova.keypairs"],

@@ -68,7 +68,7 @@ def setup_dict(data, required=None, defaults=None):
     :param required: list, mandatory keys to check
     :param defaults: dict, default data
     :returns: dict, with all keys set
-    :raises: IndexError, ValueError
+    :raises IndexError, ValueError: If input data is incorrect
     """
     required = required or []
     for i in set(required) - set(data):
@@ -768,6 +768,12 @@ class FakeMeterManager(FakeManager):
         return ["fake-meter"]
 
 
+class FakeMetricsManager(FakeManager):
+
+    def list(self):
+        return ["fake-metric"]
+
+
 class FakeCeilometerResourceManager(FakeManager):
 
     def get(self, resource_id):
@@ -914,9 +920,10 @@ class FakeObjectManager(FakeManager):
 
 
 class FakeServiceCatalog(object):
-    def get_endpoints(self):
+    def get_credentials(self):
         return {"image": [{"publicURL": "http://fake.to"}],
-                "metering": [{"publicURL": "http://fake.to"}]}
+                "metering": [{"publicURL": "http://fake.to"}],
+                "monitoring": [{"publicURL": "http://fake.to"}]}
 
     def url_for(self, **kwargs):
         return "http://fake.to"
@@ -1027,6 +1034,12 @@ class FakeCeilometerClient(object):
         self.query_alarm_history = FakeQueryManager()
 
 
+class FakeMonascaClient(object):
+
+    def __init__(self):
+        self.metrics = FakeMetricsManager()
+
+
 class FakeNeutronClient(object):
 
     def __init__(self, **kwargs):
@@ -1037,6 +1050,7 @@ class FakeNeutronClient(object):
         self.__pools = {}
         self.__vips = {}
         self.__fips = {}
+        self.__healthmonitors = {}
         self.__tenant_id = kwargs.get("tenant_id", generate_uuid())
 
         self.format = "json"
@@ -1130,6 +1144,19 @@ class FakeNeutronClient(object):
         self.__fips[fip_id] = fip
         return {"fip": fip}
 
+    def create_health_monitor(self, data):
+        healthmonitor = setup_dict(data["healthmonitor"],
+                                   required=["type", "timeout", "delay",
+                                             "max_retries"],
+                                   defaults={"admin_state_up": True})
+        healthmonitor_id = generate_uuid()
+
+        healthmonitor.update({"id": healthmonitor_id,
+                              "status": "PENDING_CREATE",
+                              "tenant_id": self.__tenant_id})
+        self.__healthmonitors[healthmonitor_id] = healthmonitor
+        return {"healthmonitor": healthmonitor}
+
     def create_port(self, data):
         port = setup_dict(data["port"],
                           required=["network_id"],
@@ -1206,6 +1233,9 @@ class FakeNeutronClient(object):
     def update_vip(self, vip_id, data):
         self.update_resource(vip_id, self.__vips, data)
 
+    def update_health_monitor(self, healthmonitor_id, data):
+        self.update_resource(healthmonitor_id, self.__healthmonitors, data)
+
     def update_subnet(self, subnet_id, data):
         self.update_resource(subnet_id, self.__subnets, data)
 
@@ -1235,6 +1265,11 @@ class FakeNeutronClient(object):
         if vip_id not in self.__vips:
             raise neutron_exceptions.NeutronClientException
         del self.__vips[vip_id]
+
+    def delete_health_monitor(self, healthmonitor_id):
+        if healthmonitor_id not in self.__healthmonitors:
+            raise neutron_exceptions.NeutronClientException
+        del self.__healthmonitors[healthmonitor_id]
         return ""
 
     def delete_floatingip(self, fip_id):
@@ -1285,6 +1320,11 @@ class FakeNeutronClient(object):
         vips = self._filter(self.__vips.values(), search_opts)
         return {"vips": vips}
 
+    def list_health_monitors(self, **search_opts):
+        healthmonitors = self._filter(
+            self.__healthmonitors.values(), search_opts)
+        return {"healthmonitors": healthmonitors}
+
     def list_ports(self, **search_opts):
         ports = self._filter(self.__ports.values(), search_opts)
         return {"ports": ports}
@@ -1321,6 +1361,22 @@ class FakeNeutronClient(object):
                                 "id": router_id}
 
         raise neutron_exceptions.NeutronClientException
+
+    def associate_health_monitor(self, pool_id, healthmonitor_id):
+        if pool_id not in self.__pools:
+            raise neutron_exceptions.NeutronClientException
+        if healthmonitor_id not in self.__healthmonitors:
+            raise neutron_exceptions.NeutronClientException
+        self.__pools[pool_id]["pool"]["healthmonitors"] = healthmonitor_id
+        return {"pool": self.__pools[pool_id]}
+
+    def disassociate_health_monitor(self, pool_id, healthmonitor_id):
+        if pool_id not in self.__pools:
+            raise neutron_exceptions.NeutronClientException
+        if healthmonitor_id not in self.__healthmonitors:
+            raise neutron_exceptions.NeutronClientException
+        del self.__pools[pool_id]["pool"]["healthmonitors"][healthmonitor_id]
+        return ""
 
 
 class FakeIronicClient(object):
@@ -1393,9 +1449,15 @@ class FakeEC2Client(object):
         pass
 
 
+class FakeCueClient(object):
+
+    def __init__(self):
+        pass
+
+
 class FakeClients(object):
 
-    def __init__(self, endpoint_=None):
+    def __init__(self, credential_=None):
         self._nova = None
         self._glance = None
         self._keystone = None
@@ -1410,8 +1472,9 @@ class FakeClients(object):
         self._mistral = None
         self._swift = None
         self._murano = None
+        self._monasca = None
         self._ec2 = None
-        self._endpoint = endpoint_ or objects.Endpoint(
+        self._credential = credential_ or objects.Credential(
             "http://fake.example.org:5000/v2.0/",
             "fake_username",
             "fake_password",
@@ -1464,6 +1527,11 @@ class FakeClients(object):
         if not self._ceilometer:
             self._ceilometer = FakeCeilometerClient()
         return self._ceilometer
+
+    def monasca(self):
+        if not self._monasca:
+            self._monasca = FakeMonascaClient()
+        return self._monasca
 
     def zaqar(self):
         if not self._zaqar:
@@ -1530,6 +1598,16 @@ class FakeScenario(scenario.Scenario):
     def with_output(self, **kwargs):
         return {"data": {"a": 1}, "error": None}
 
+    def with_add_output(self):
+        self.add_output(additive={"title": "Additive",
+                                  "description": "Additive description",
+                                  "data": [["a", 1]],
+                                  "chart_plugin": "FooPlugin"},
+                        complete={"title": "Complete",
+                                  "description": "Complete description",
+                                  "data": [["a", [[1, 2], [2, 3]]]],
+                                  "chart_plugin": "BarPlugin"})
+
     def too_long(self, **kwargs):
         pass
 
@@ -1587,11 +1665,11 @@ class FakeUserContext(FakeContext):
 
     admin = {
         "id": "adminuuid",
-        "endpoint": objects.Endpoint("aurl", "aname", "apwd", "atenant")
+        "credential": objects.Credential("aurl", "aname", "apwd", "atenant")
     }
     user = {
         "id": "uuid",
-        "endpoint": objects.Endpoint("url", "name", "pwd", "tenant"),
+        "credential": objects.Credential("url", "name", "pwd", "tenant"),
         "tenant_id": "uuid"
     }
     tenants = {"uuid": {"name": "tenant"}}

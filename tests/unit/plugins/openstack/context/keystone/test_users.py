@@ -35,7 +35,7 @@ class UserContextMixinTestCase(test.TestCase):
             tenants[str(i)] = {"name": str(i)}
             for j in range(3):
                 users_.append({"id": "%s_%s" % (i, j),
-                              "tenant_id": str(i), "endpoint": "endpoint"})
+                              "tenant_id": str(i), "credential": "credential"})
 
         context = {
             "admin": mock.MagicMock(),
@@ -79,7 +79,7 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
                     "resource_management_workers": self.threads,
                 }
             },
-            "admin": {"endpoint": mock.MagicMock()},
+            "admin": {"credential": mock.MagicMock()},
             "users": [],
             "task": {"uuid": "task_id"}
         })
@@ -117,7 +117,7 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
 
         user_generator._remove_default_security_group()
 
-        mock_wrap.assert_called_once_with(admin_clients, self.context["task"])
+        mock_wrap.assert_called_once_with(admin_clients, user_generator)
         net_wrapper.supports_extension.assert_called_once_with(
             "security-group")
 
@@ -148,12 +148,12 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
         user_generator._remove_default_security_group()
 
         mock_network.wrap.assert_called_once_with(admin_clients,
-                                                  self.context["task"])
+                                                  user_generator)
 
         mock_iterate_per_tenants.assert_called_once_with(
             user_generator.context["users"])
-        expected = [mock.call(user_generator.endpoint)] + [
-            mock.call(u["endpoint"])
+        expected = [mock.call(user_generator.credential)] + [
+            mock.call(u["credential"])
             for u, t in mock_iterate_per_tenants.return_value]
         self.osclients.Clients.assert_has_calls(expected, any_order=True)
 
@@ -221,9 +221,8 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
                                                           "nova-network")
         nova_admin.networks.disassociate.assert_called_once_with(networks[0])
 
-    @mock.patch("%s.broker.time.sleep" % CTX)
     @mock.patch("%s.keystone" % CTX)
-    def test__create_tenants(self, mock_keystone, mock_sleep):
+    def test__create_tenants(self, mock_keystone):
         user_generator = users.UserGenerator(self.context)
         user_generator.config["tenants"] = 1
         tenants = user_generator._create_tenants()
@@ -231,9 +230,8 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
         id, tenant = tenants.popitem()
         self.assertIn("name", tenant)
 
-    @mock.patch("%s.broker.time.sleep" % CTX)
     @mock.patch("%s.keystone" % CTX)
-    def test__create_users(self, mock_keystone, mock_sleep):
+    def test__create_users(self, mock_keystone):
         user_generator = users.UserGenerator(self.context)
         user_generator.context["tenants"] = {"t1": {"id": "t1", "name": "t1"},
                                              "t2": {"id": "t2", "name": "t2"}}
@@ -242,7 +240,7 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
         self.assertEqual(4, len(users_))
         for user in users_:
             self.assertIn("id", user)
-            self.assertIn("endpoint", user)
+            self.assertIn("credential", user)
 
     @mock.patch("%s.keystone" % CTX)
     def test__delete_tenants(self, mock_keystone):
@@ -314,46 +312,44 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
         wrapped_keystone = mock.MagicMock()
         mock_keystone.wrap.return_value = wrapped_keystone
 
-        endpoint = objects.Endpoint("foo_url", "foo", "foo_pass",
-                                    https_insecure=True,
-                                    https_cacert="cacert")
+        credential = objects.Credential("foo_url", "foo", "foo_pass",
+                                        https_insecure=True,
+                                        https_cacert="cacert")
         tmp_context = dict(self.context)
         tmp_context["config"]["users"] = {"tenants": 1,
                                           "users_per_tenant": 2,
                                           "resource_management_workers": 1}
-        tmp_context["admin"]["endpoint"] = endpoint
+        tmp_context["admin"]["credential"] = credential
 
-        endpoint_dict = endpoint.to_dict(False)
+        credential_dict = credential.to_dict(False)
         user_list = [mock.MagicMock(id="id_%d" % i)
                      for i in range(self.users_num)]
         wrapped_keystone.create_user.side_effect = user_list
 
         with users.UserGenerator(tmp_context) as ctx:
+            ctx.generate_random_name = mock.Mock()
             ctx.setup()
 
             create_tenant_calls = []
             for i, t in enumerate(ctx.context["tenants"]):
-                pattern = users.UserGenerator.PATTERN_TENANT
                 create_tenant_calls.append(
-                    mock.call(
-                        pattern % {"task_id": tmp_context["task"]["uuid"],
-                                   "iter": i},
-                        ctx.config["project_domain"]))
+                    mock.call(ctx.generate_random_name.return_value,
+                              ctx.config["project_domain"]))
 
             for user in ctx.context["users"]:
-                self.assertEqual(set(["id", "endpoint", "tenant_id"]),
+                self.assertEqual(set(["id", "credential", "tenant_id"]),
                                  set(user.keys()))
 
-                user_endpoint_dict = user["endpoint"].to_dict(False)
+                user_credential_dict = user["credential"].to_dict(False)
 
                 excluded_keys = ["auth_url", "username", "password",
                                  "tenant_name", "region_name",
                                  "project_domain_name",
                                  "admin_domain_name",
                                  "user_domain_name"]
-                for key in (set(endpoint_dict.keys()) - set(excluded_keys)):
-                    self.assertEqual(endpoint_dict[key],
-                                     user_endpoint_dict[key])
+                for key in (set(credential_dict.keys()) - set(excluded_keys)):
+                    self.assertEqual(credential_dict[key],
+                                     user_credential_dict[key])
 
             tenants_ids = []
             for t in ctx.context["tenants"].keys():
@@ -366,8 +362,9 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
 
     @mock.patch("%s.keystone" % CTX)
     def test_users_contains_correct_endpoint_type(self, mock_keystone):
-        endpoint = objects.Endpoint("foo_url", "foo", "foo_pass",
-                                    endpoint_type=consts.EndpointType.INTERNAL)
+        credential = objects.Credential(
+            "foo_url", "foo", "foo_pass",
+            endpoint_type=consts.EndpointType.INTERNAL)
         config = {
             "config": {
                 "users": {
@@ -376,7 +373,7 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
                     "resource_management_workers": 1
                 }
             },
-            "admin": {"endpoint": endpoint},
+            "admin": {"credential": credential},
             "task": {"uuid": "task_id"}
         }
 
@@ -384,11 +381,11 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
         users_ = user_generator._create_users()
 
         for user in users_:
-            self.assertEqual("internal", user["endpoint"].endpoint_type)
+            self.assertEqual("internal", user["credential"].endpoint_type)
 
     @mock.patch("%s.keystone" % CTX)
     def test_users_contains_default_endpoint_type(self, mock_keystone):
-        endpoint = objects.Endpoint("foo_url", "foo", "foo_pass")
+        credential = objects.Credential("foo_url", "foo", "foo_pass")
         config = {
             "config": {
                 "users": {
@@ -397,7 +394,7 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
                     "resource_management_workers": 1
                 }
             },
-            "admin": {"endpoint": endpoint},
+            "admin": {"credential": credential},
             "task": {"uuid": "task_id"}
         }
 
@@ -405,4 +402,4 @@ class UserGeneratorTestCase(test.ScenarioTestCase):
         users_ = user_generator._create_users()
 
         for user in users_:
-            self.assertEqual("public", user["endpoint"].endpoint_type)
+            self.assertEqual("public", user["credential"].endpoint_type)

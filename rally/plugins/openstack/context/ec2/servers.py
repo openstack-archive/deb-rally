@@ -13,7 +13,7 @@
 # under the License.
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import osclients
@@ -62,12 +62,12 @@ class EC2ServerGenerator(context.Context):
         "additionalProperties": False
     }
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `EC2 Servers`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `EC2 Servers`"))
     def setup(self):
         image = self.config["image"]
         flavor = self.config["flavor"]
 
-        clients = osclients.Clients(self.context["users"][0]["endpoint"])
+        clients = osclients.Clients(self.context["users"][0]["credential"])
         image_id = types.EC2ImageResourceType.transform(clients=clients,
                                                         resource_config=image)
 
@@ -75,7 +75,7 @@ class EC2ServerGenerator(context.Context):
                 self.context["users"]):
             LOG.debug("Booting servers for tenant %s "
                       % (user["tenant_id"]))
-            user_clients = osclients.Clients(user["endpoint"])
+            user_clients = osclients.Clients(user["credential"])
             ec2_scenario = ec2_utils.EC2Scenario(clients=user_clients)
 
             LOG.debug(
@@ -92,7 +92,7 @@ class EC2ServerGenerator(context.Context):
 
             self.context["tenants"][tenant_id]["ec2_servers"] = current_servers
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `EC2 Servers`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `EC2 Servers`"))
     def cleanup(self):
         resource_manager.cleanup(names=["ec2.servers"],
                                  users=self.context.get("users", []))

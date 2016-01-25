@@ -39,13 +39,14 @@ class SaharaClusterTestCase(test.ScenarioTestCase):
 
         for i in range(self.tenants_num):
             self.tenants[str(i)] = {"id": str(i), "name": str(i),
-                                    "sahara_image": "42"}
+                                    "sahara": {"image": "42"}}
             for j in range(self.users_per_tenant):
                 self.users_key.append({"id": "%s_%s" % (str(i), str(j)),
                                        "tenant_id": str(i),
-                                       "endpoint": mock.MagicMock()})
+                                       "credential": mock.MagicMock()})
 
-        CONF.set_override("sahara_cluster_check_interval", 0, "benchmark")
+        CONF.set_override("sahara_cluster_check_interval", 0, "benchmark",
+                          enforce_type=True)
 
         self.context.update({
             "config": {
@@ -60,7 +61,7 @@ class SaharaClusterTestCase(test.ScenarioTestCase):
                     "hadoop_version": "test_version"
                 }
             },
-            "admin": {"endpoint": mock.MagicMock()},
+            "admin": {"credential": mock.MagicMock()},
             "users": self.users_key,
             "tenants": self.tenants
         })
@@ -80,7 +81,7 @@ class SaharaClusterTestCase(test.ScenarioTestCase):
                 hadoop_version="test_version",
                 flavor_id="test_flavor",
                 workers_count=2,
-                image_id=self.context["tenants"][i]["sahara_image"],
+                image_id=self.context["tenants"][i]["sahara"]["image"],
                 floating_ip_pool=None,
                 volumes_per_node=None,
                 volumes_size=1,
@@ -89,6 +90,7 @@ class SaharaClusterTestCase(test.ScenarioTestCase):
                 node_configs=None,
                 cluster_configs=None,
                 enable_anti_affinity=False,
+                enable_proxy=False,
                 wait_active=False
             ))
 
@@ -117,7 +119,7 @@ class SaharaClusterTestCase(test.ScenarioTestCase):
                 hadoop_version="test_version",
                 flavor_id="test_flavor",
                 workers_count=2,
-                image_id=self.context["tenants"][i]["sahara_image"],
+                image_id=self.context["tenants"][i]["sahara"]["image"],
                 floating_ip_pool=None,
                 volumes_per_node=None,
                 volumes_size=1,

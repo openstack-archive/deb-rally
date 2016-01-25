@@ -26,7 +26,7 @@ SAMPLE_CONFIG = {
         "name": "ExistingServers",
         "credentials": [{"user": "root", "host": "example.com"}],
     },
-    "localrc": {
+    "local_conf": {
         "ADMIN_PASSWORD": "secret",
     },
 }
@@ -52,7 +52,7 @@ class DevstackEngineTestCase(test.TestCase):
                           engine.validate)
 
     def test_construct(self):
-        self.assertEqual(self.engine.localrc["ADMIN_PASSWORD"], "secret")
+        self.assertEqual(self.engine.local_conf["ADMIN_PASSWORD"], "secret")
 
     @mock.patch("rally.deployment.engines.devstack.open", create=True)
     def test_prepare_server(self, mock_open):
@@ -74,22 +74,22 @@ class DevstackEngineTestCase(test.TestCase):
     @mock.patch("rally.deployment.engines.devstack.get_updated_server")
     @mock.patch("rally.deployment.engines.devstack.get_script")
     @mock.patch("rally.deployment.serverprovider.provider.Server")
-    @mock.patch("rally.deployment.engines.devstack.objects.Endpoint")
-    def test_deploy(self, mock_endpoint, mock_server, mock_get_script,
+    @mock.patch("rally.deployment.engines.devstack.objects.Credential")
+    def test_deploy(self, mock_credential, mock_server, mock_get_script,
                     mock_get_updated_server, mock_engine_get_provider):
         mock_engine_get_provider.return_value = fake_provider = (
             mock.Mock()
         )
         server = mock.Mock(host="host")
-        mock_endpoint.return_value = "fake_endpoint"
+        mock_credential.return_value = "fake_credential"
         mock_get_updated_server.return_value = ds_server = mock.Mock()
         mock_get_script.return_value = "fake_script"
         server.get_credentials.return_value = "fake_credentials"
         fake_provider.create_servers.return_value = [server]
         with mock.patch.object(self.engine, "deployment") as mock_deployment:
-            endpoints = self.engine.deploy()
-        self.assertEqual({"admin": "fake_endpoint"}, endpoints)
-        mock_endpoint.assert_called_once_with(
+            credentials = self.engine.deploy()
+        self.assertEqual({"admin": "fake_credential"}, credentials)
+        mock_credential.assert_called_once_with(
             "http://host:5000/v2.0/", "admin", "secret", "admin", "admin")
         mock_deployment.add_resource.assert_called_once_with(
             info="fake_credentials",
@@ -99,9 +99,9 @@ class DevstackEngineTestCase(test.TestCase):
         cmd = "/bin/sh -e -s %s master" % repo
         server.ssh.run.assert_called_once_with(cmd, stdin="fake_script")
         ds_calls = [
-            mock.call.ssh.run("cat > ~/devstack/localrc", stdin=mock.ANY),
+            mock.call.ssh.run("cat > ~/devstack/local.conf", stdin=mock.ANY),
             mock.call.ssh.run("~/devstack/stack.sh")
         ]
         self.assertEqual(ds_calls, ds_server.mock_calls)
-        localrc = ds_server.mock_calls[0][2]["stdin"]
-        self.assertIn("ADMIN_PASSWORD=secret", localrc)
+        local_conf = ds_server.mock_calls[0][2]["stdin"]
+        self.assertIn("ADMIN_PASSWORD=secret", local_conf)

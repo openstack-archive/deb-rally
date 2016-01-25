@@ -21,7 +21,7 @@ from oslo_config import cfg
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import sshutils
 from rally.plugins.openstack.scenarios.cinder import utils as cinder_utils
 from rally.plugins.openstack.scenarios.nova import utils as nova_utils
@@ -31,9 +31,6 @@ from rally.task import utils
 from rally.task import validation
 
 LOG = logging.getLogger(__name__)
-
-ICMP_UP_STATUS = "ICMP UP"
-ICMP_DOWN_STATUS = "ICMP DOWN"
 
 VM_BENCHMARK_OPTS = [
     cfg.FloatOpt("vm_ping_poll_interval", default=1.0,
@@ -45,6 +42,49 @@ VM_BENCHMARK_OPTS = [
 CONF = cfg.CONF
 benchmark_group = cfg.OptGroup(name="benchmark", title="benchmark options")
 CONF.register_opts(VM_BENCHMARK_OPTS, group=benchmark_group)
+
+
+class Host(object):
+
+    ICMP_UP_STATUS = "ICMP UP"
+    ICMP_DOWN_STATUS = "ICMP DOWN"
+
+    name = "ip"
+
+    def __init__(self, ip):
+        self.ip = netaddr.IPAddress(ip)
+        self.status = self.ICMP_DOWN_STATUS
+
+    @property
+    def id(self):
+        return self.ip.format()
+
+    @classmethod
+    def update_status(cls, server):
+        """Check ip address is pingable and update status."""
+        ping = "ping" if server.ip.version == 4 else "ping6"
+        if sys.platform.startswith("linux"):
+            cmd = [ping, "-c1", "-w1", server.ip.format()]
+        else:
+            cmd = [ping, "-c1", server.ip.format()]
+
+        proc = subprocess.Popen(cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        proc.wait()
+        LOG.debug("Host %s is ICMP %s"
+                  % (server.ip.format(), proc.returncode and "down" or "up"))
+        if proc.returncode == 0:
+            server.status = cls.ICMP_UP_STATUS
+        else:
+            server.status = cls.ICMP_DOWN_STATUS
+        return server
+
+    def __eq__(self, other):
+        if not isinstance(other, Host):
+            raise TypeError("%s should be an instance of %s" % (
+                other, Host.__class__.__name__))
+        return self.ip == other.ip and self.status == other.status
 
 
 class VMScenario(nova_utils.NovaScenario, cinder_utils.CinderScenario):
@@ -128,12 +168,12 @@ class VMScenario(nova_utils.NovaScenario, cinder_utils.CinderScenario):
         internal_network = list(server.networks)[0]
         fixed_ip = server.addresses[internal_network][0]["addr"]
 
-        fip = network_wrapper.wrap(self.clients,
-                                   self.context["task"]).create_floating_ip(
+        fip = network_wrapper.wrap(self.clients, self).create_floating_ip(
             ext_network=floating_network,
             tenant_id=server.tenant_id, fixed_ip=fixed_ip)
 
-        self._associate_floating_ip(server, fip["ip"], fixed_address=fixed_ip)
+        self._associate_floating_ip(server, fip["ip"], fixed_address=fixed_ip,
+                                    atomic_action=False)
 
         return fip
 
@@ -142,11 +182,10 @@ class VMScenario(nova_utils.NovaScenario, cinder_utils.CinderScenario):
         with logging.ExceptionLogger(
                 LOG, _("Unable to delete IP: %s") % fip["ip"]):
             if self.check_ip_address(fip["ip"])(server):
-                self._dissociate_floating_ip(server, fip["ip"])
-                network_wrapper.wrap(
-                    self.clients, self.context["task"]).delete_floating_ip(
-                        fip["id"],
-                        wait=True)
+                self._dissociate_floating_ip(server, fip["ip"],
+                                             atomic_action=False)
+                network_wrapper.wrap(self.clients, self).delete_floating_ip(
+                    fip["id"], wait=True)
 
     def _delete_server_with_fip(self, server, fip, force_delete=False):
         if fip["is_floating"]:
@@ -159,10 +198,11 @@ class VMScenario(nova_utils.NovaScenario, cinder_utils.CinderScenario):
 
     @atomic.action_timer("vm.wait_for_ping")
     def _wait_for_ping(self, server_ip):
-        server_ip = netaddr.IPAddress(server_ip)
-        utils.wait_for(
-            server_ip,
-            is_ready=utils.resource_is(ICMP_UP_STATUS, self._ping_ip_address),
+        server = Host(server_ip)
+        utils.wait_for_status(
+            server,
+            ready_statuses=[Host.ICMP_UP_STATUS],
+            update_resource=Host.update_status,
             timeout=CONF.benchmark.vm_ping_timeout,
             check_interval=CONF.benchmark.vm_ping_poll_interval
         )
@@ -192,23 +232,3 @@ class VMScenario(nova_utils.NovaScenario, cinder_utils.CinderScenario):
                            pkey=pkey, password=password)
         self._wait_for_ssh(ssh)
         return self._run_command_over_ssh(ssh, command)
-
-    @staticmethod
-    def _ping_ip_address(host):
-        """Check ip address that it is pingable.
-
-        :param host: instance of `netaddr.IPAddress`
-        """
-        ping = "ping" if host.version == 4 else "ping6"
-        if sys.platform.startswith("linux"):
-            cmd = [ping, "-c1", "-w1", str(host)]
-        else:
-            cmd = [ping, "-c1", str(host)]
-
-        proc = subprocess.Popen(cmd,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
-        proc.wait()
-        LOG.debug("Host %s is ICMP %s"
-                  % (host, proc.returncode and "down" or "up"))
-        return ICMP_UP_STATUS if (proc.returncode == 0) else ICMP_DOWN_STATUS

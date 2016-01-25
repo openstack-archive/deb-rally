@@ -21,7 +21,7 @@ from oslo_utils import importutils
 
 import rally
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 
 LOG = logging.getLogger(__name__)
 
@@ -63,10 +63,11 @@ def import_modules_from_package(package):
 def load_plugins(dir_or_file):
     if os.path.isdir(dir_or_file):
         directory = dir_or_file
-        LOG.info(_("Loading plugins from directories %s/*") % directory)
+        LOG.info(_("Loading plugins from directories %s/*") %
+                 directory.rstrip("/"))
 
         to_load = []
-        for root, dirs, files in os.walk(directory):
+        for root, dirs, files in os.walk(directory, followlinks=True):
             to_load.extend((plugin[:-3], root)
                            for plugin in files if plugin.endswith(".py"))
         for plugin, directory in to_load:

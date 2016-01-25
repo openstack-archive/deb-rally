@@ -17,7 +17,7 @@ import time
 
 from rally.common import broker
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common.plugin import discover
 from rally.common import utils as rutils
 from rally import osclients
@@ -36,8 +36,8 @@ class SeekAndDestroy(object):
         all resources created by Rally.
 
         :param manager_cls: subclass of base.ResourceManager
-        :param admin: admin endpoint like in context["admin"]
-        :param users: users endpoints like in context["users"]
+        :param admin: admin credential like in context["admin"]
+        :param users: users credentials like in context["users"]
         """
         self.manager_cls = manager_cls
         self.admin = admin
@@ -51,9 +51,9 @@ class SeekAndDestroy(object):
             return None
 
         if not isinstance(cache, dict):
-            return osclients.Clients(user["endpoint"])
+            return osclients.Clients(user["credential"])
 
-        key = user["endpoint"]
+        key = user["credential"]
         if key not in cache:
             cache[key] = osclients.Clients(key)
 
@@ -264,14 +264,14 @@ def cleanup(names=None, admin_required=None, admin=None, users=None):
     :param admin_required: If None -> return all plugins
                            If True -> return only admin plugins
                            If False -> return only non admin plugins
-    :param admin: rally.common.objects.Endpoint that corresponds to OpenStack
+    :param admin: rally.common.objects.Credential that corresponds to OpenStack
                   admin.
     :param users: List of OpenStack users that was used during benchmarking.
                   Every user has next structure:
                   {
                     "id": <uuid1>,
                     "tenant_id": <uuid2>,
-                    "endpoint": <rally.common.objects.Endpoint>
+                    "credential": <rally.common.objects.Credential>
 
                   }
     """

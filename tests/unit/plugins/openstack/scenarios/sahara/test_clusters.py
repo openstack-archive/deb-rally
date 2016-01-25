@@ -34,7 +34,9 @@ class SaharaClustersTestCase(test.ScenarioTestCase):
 
         clusters_scenario.context = {
             "tenant": {
-                "sahara_image": "test_image"
+                "sahara": {
+                    "image": "test_image",
+                }
             }
         }
         clusters_scenario.create_and_delete_cluster(
@@ -56,7 +58,8 @@ class SaharaClustersTestCase(test.ScenarioTestCase):
             security_groups=None,
             node_configs=None,
             cluster_configs=None,
-            enable_anti_affinity=False)
+            enable_anti_affinity=False,
+            enable_proxy=False)
 
         mock__delete_cluster.assert_called_once_with(
             mock__launch_cluster.return_value)
@@ -75,7 +78,9 @@ class SaharaClustersTestCase(test.ScenarioTestCase):
 
         clusters_scenario.context = {
             "tenant": {
-                "sahara_image": "test_image"
+                "sahara": {
+                    "image": "test_image",
+                }
             }
         }
 
@@ -99,7 +104,8 @@ class SaharaClustersTestCase(test.ScenarioTestCase):
             security_groups=None,
             node_configs=None,
             cluster_configs=None,
-            enable_anti_affinity=False)
+            enable_anti_affinity=False,
+            enable_proxy=False)
 
         mock__scale_cluster.assert_has_calls([
             mock.call(self.clients("sahara").clusters.get.return_value, 1),

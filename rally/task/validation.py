@@ -89,7 +89,7 @@ def number(config, clients, deployment, param_name, minval=None, maxval=None,
     :param param_name: Name of parameter to validate
     :param minval: Lower endpoint of valid interval
     :param maxval: Upper endpoint of valid interval
-    :param nullable: Allow parameter not specified, or paramater=None
+    :param nullable: Allow parameter not specified, or parameter=None
     :param integer_only: Only accept integers
     """
 
@@ -480,18 +480,24 @@ def required_services(config, clients, deployment, *required_services):
 
     if consts.Service.NOVA_NET in required_services:
         nova = osclients.Clients(
-            objects.Endpoint(**deployment["admin"])).nova()
+            objects.Credential(**deployment["admin"])).nova()
         for service in nova.services.list():
             if (service.binary == consts.Service.NOVA_NET and
                     service.status == "enabled"):
                 available_services.append(consts.Service.NOVA_NET)
 
     for service in required_services:
-        if service not in consts.Service:
-            return ValidationResult(False, _("Unknown service: %s") % service)
-        if service not in available_services:
+        # NOTE(andreykurilin): validator should ignore services configured via
+        # context(a proper validation should be in context)
+        service_config = config.get("context", {}).get(
+            "api_versions", {}).get(service, {})
+        if (service not in available_services and
+                not ("service_type" in service_config or
+                     "service_name" in service_config)):
             return ValidationResult(
-                False, _("Service is not available: %s") % service)
+                False, _("'{0}' service is not available. Hint: If '{0}' "
+                         "service has non-default service_type, try to setup "
+                         "it via 'api_versions' context.").format(service))
 
 
 @validator
@@ -520,7 +526,7 @@ def required_cinder_services(config, clients, deployment, service_name):
     """
 
     admin_client = osclients.Clients(
-        objects.Endpoint(**deployment["admin"])).cinder()
+        objects.Credential(**deployment["admin"])).cinder()
 
     for service in admin_client.services.list():
         if (service.binary == six.text_type(service_name) and
@@ -540,7 +546,7 @@ def required_clients(config, clients, deployment, *components, **kwargs):
                      admin - bool, whether to use admin clients
     """
     if kwargs.get("admin", False):
-        clients = osclients.Clients(objects.Endpoint(**deployment["admin"]))
+        clients = osclients.Clients(objects.Credential(**deployment["admin"]))
 
     for client_component in components:
         try:

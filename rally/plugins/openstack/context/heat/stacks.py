@@ -14,7 +14,7 @@
 #    under the License.
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally.plugins.openstack.context.cleanup import manager as resource_manager
@@ -70,19 +70,20 @@ class StackGenerator(context.Context):
             template["resources"]["TestResource%d" % i] = rand_string
         return template
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `Stacks`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `Stacks`"))
     def setup(self):
         template = self._prepare_stack_template(
             self.config["resources_per_stack"])
         for user, tenant_id in rutils.iterate_per_tenants(
                 self.context["users"]):
-            heat_scenario = heat_utils.HeatScenario({"user": user})
+            heat_scenario = heat_utils.HeatScenario(
+                {"user": user, "task": self.context["task"]})
             self.context["tenants"][tenant_id]["stacks"] = []
             for i in range(self.config["stacks_per_tenant"]):
                 stack = heat_scenario._create_stack(template)
                 self.context["tenants"][tenant_id]["stacks"].append(stack.id)
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `Stacks`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `Stacks`"))
     def cleanup(self):
         resource_manager.cleanup(names=["heat.stacks"],
                                  users=self.context.get("users", []))

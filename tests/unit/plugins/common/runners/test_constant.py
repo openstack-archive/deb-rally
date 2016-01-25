@@ -64,7 +64,7 @@ class ConstantScenarioRunnerTestCase(test.TestCase):
 
         fake_ram_int = iter(range(10))
 
-        context = {"users": [{"tenant_id": "t1", "endpoint": "e1",
+        context = {"users": [{"tenant_id": "t1", "credential": "c1",
                               "id": "uuid1"}]}
         info = {"processes_to_start": 1, "processes_counter": 1}
 
@@ -72,9 +72,12 @@ class ConstantScenarioRunnerTestCase(test.TestCase):
                                  context, "Dummy", "dummy", (), mock_event,
                                  info)
 
-        self.assertEqual(times, mock_thread.call_count)
-        self.assertEqual(times, mock_thread_instance.start.call_count)
-        self.assertEqual(times, mock_thread_instance.join.call_count)
+        self.assertEqual(times + 1, mock_thread.call_count)
+        self.assertEqual(times + 1, mock_thread_instance.start.call_count)
+        self.assertEqual(times + 1, mock_thread_instance.join.call_count)
+        # NOTE(rvasilets): `times` + 1 here because `times` the number of
+        # scenario repetition and one more need on "initialization" stage
+        # of the thread stuff.
         self.assertEqual(times, mock_runner._get_scenario_context.call_count)
 
         for i in range(times):
@@ -104,8 +107,9 @@ class ConstantScenarioRunnerTestCase(test.TestCase):
         runner_obj._run_scenario(
             fakes.FakeScenario, "do_it", self.context, self.args)
         self.assertEqual(len(runner_obj.result_queue), self.config["times"])
-        for result in runner_obj.result_queue:
-            self.assertIsNotNone(runner.ScenarioRunnerResult(result))
+        for result_batch in runner_obj.result_queue:
+            for result in result_batch:
+                self.assertIsNotNone(runner.ScenarioRunnerResult(result))
 
     def test__run_scenario_exception(self):
         runner_obj = constant.ConstantScenarioRunner(self.task, self.config)
@@ -113,9 +117,10 @@ class ConstantScenarioRunnerTestCase(test.TestCase):
         runner_obj._run_scenario(fakes.FakeScenario, "something_went_wrong",
                                  self.context, self.args)
         self.assertEqual(len(runner_obj.result_queue), self.config["times"])
-        for result in runner_obj.result_queue:
-            self.assertIsNotNone(runner.ScenarioRunnerResult(result))
-        self.assertIn("error", runner_obj.result_queue[0])
+        for result_batch in runner_obj.result_queue:
+            for result in result_batch:
+                self.assertIsNotNone(runner.ScenarioRunnerResult(result))
+        self.assertIn("error", runner_obj.result_queue[0][0])
 
     def test__run_scenario_aborted(self):
         runner_obj = constant.ConstantScenarioRunner(self.task, self.config)
@@ -255,8 +260,9 @@ class ConstantForDurationScenarioRunnerTestCase(test.TestCase):
         # NOTE(mmorais): when duration is 0, scenario executes exactly 1 time
         expected_times = 1
         self.assertEqual(len(runner_obj.result_queue), expected_times)
-        for result in runner_obj.result_queue:
-            self.assertIsNotNone(runner.ScenarioRunnerResult(result))
+        for result_batch in runner_obj.result_queue:
+            for result in result_batch:
+                self.assertIsNotNone(runner.ScenarioRunnerResult(result))
 
     def test_run_scenario_constantly_for_duration_exception(self):
         runner_obj = constant.ConstantForDurationScenarioRunner(
@@ -267,9 +273,10 @@ class ConstantForDurationScenarioRunnerTestCase(test.TestCase):
         # NOTE(mmorais): when duration is 0, scenario executes exactly 1 time
         expected_times = 1
         self.assertEqual(len(runner_obj.result_queue), expected_times)
-        for result in runner_obj.result_queue:
-            self.assertIsNotNone(runner.ScenarioRunnerResult(result))
-        self.assertIn("error", runner_obj.result_queue[0])
+        for result_batch in runner_obj.result_queue:
+            for result in result_batch:
+                self.assertIsNotNone(runner.ScenarioRunnerResult(result))
+        self.assertIn("error", runner_obj.result_queue[0][0])
 
     def test_run_scenario_constantly_for_duration_timeout(self):
         runner_obj = constant.ConstantForDurationScenarioRunner(
@@ -280,9 +287,10 @@ class ConstantForDurationScenarioRunnerTestCase(test.TestCase):
         # NOTE(mmorais): when duration is 0, scenario executes exactly 1 time
         expected_times = 1
         self.assertEqual(len(runner_obj.result_queue), expected_times)
-        for result in runner_obj.result_queue:
-            self.assertIsNotNone(runner.ScenarioRunnerResult(result))
-        self.assertIn("error", runner_obj.result_queue[0])
+        for result_batch in runner_obj.result_queue:
+            for result in result_batch:
+                self.assertIsNotNone(runner.ScenarioRunnerResult(result))
+        self.assertIn("error", runner_obj.result_queue[0][0])
 
     def test__run_scenario_constantly_aborted(self):
         runner_obj = constant.ConstantForDurationScenarioRunner(None,

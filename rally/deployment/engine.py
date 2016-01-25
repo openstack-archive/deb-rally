@@ -19,9 +19,8 @@ import jsonschema
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common.plugin import plugin
-from rally.common import utils
 from rally import consts
 from rally.deployment.serverprovider import provider
 from rally import exceptions
@@ -56,11 +55,11 @@ class Engine(plugin.Plugin):
             # do something
 
         def deploy(self):
-            # Make a deployment and return OpenStack endpoints.
-            # The endpoints may have either admin or ordinary users
+            # Make a deployment and return OpenStack credentials.
+            # The credentials may have either admin or ordinary users
             # permissions (depending on how the deploy engine has been
             # initialized).
-            return [endpoint_1, endpoint_2, ...]
+            return [credential_1, credential_2, ...]
 
         def cleanup(self):
             # Destroy OpenStack deployment and free resource
@@ -106,21 +105,21 @@ class Engine(plugin.Plugin):
 
     @abc.abstractmethod
     def deploy(self):
-        """Deploy OpenStack cloud and return endpoints."""
+        """Deploy OpenStack cloud and return credentials."""
 
     @abc.abstractmethod
     def cleanup(self):
         """Cleanup OpenStack deployment."""
 
-    @utils.log_deploy_wrapper(LOG.info, _("OpenStack cloud deployment."))
+    @logging.log_deploy_wrapper(LOG.info, _("OpenStack cloud deployment."))
     def make_deploy(self):
         self.deployment.set_started()
-        endpoints = self.deploy()
+        credentials = self.deploy()
         self.deployment.set_completed()
-        return endpoints
+        return credentials
 
-    @utils.log_deploy_wrapper(LOG.info,
-                              _("Destroy cloud and free allocated resources."))
+    @logging.log_deploy_wrapper(LOG.info, _("Destroy cloud and free "
+                                "allocated resources."))
     def make_cleanup(self):
         self.deployment.update_status(consts.DeployStatus.CLEANUP_STARTED)
         self.cleanup()

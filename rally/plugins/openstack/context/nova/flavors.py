@@ -16,7 +16,7 @@
 from novaclient import exceptions as nova_exceptions
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import osclients
@@ -70,12 +70,12 @@ class FlavorsGenerator(context.Context):
         }
     }
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `flavors`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `flavors`"))
     def setup(self):
         """Create list of flavors."""
         self.context["flavors"] = {}
 
-        clients = osclients.Clients(self.context["admin"]["endpoint"])
+        clients = osclients.Clients(self.context["admin"]["credential"])
         for flavor_config in self.config:
 
             extra_specs = flavor_config.get("extra_specs")
@@ -96,10 +96,10 @@ class FlavorsGenerator(context.Context):
             self.context["flavors"][flavor_config["name"]] = flavor.to_dict()
             LOG.debug("Created flavor with id '%s'" % flavor.id)
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `flavors`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `flavors`"))
     def cleanup(self):
         """Delete created flavors."""
-        clients = osclients.Clients(self.context["admin"]["endpoint"])
+        clients = osclients.Clients(self.context["admin"]["credential"])
         for flavor in self.context["flavors"].values():
             with logging.ExceptionLogger(
                     LOG, _("Can't delete flavor %s") % flavor["id"]):

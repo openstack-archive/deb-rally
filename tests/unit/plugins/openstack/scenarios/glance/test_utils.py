@@ -50,10 +50,9 @@ class GlanceScenarioTestCase(test.ScenarioTestCase):
         self.mock_wait_for.mock.assert_called_once_with(
             self.image,
             update_resource=self.mock_get_from_manager.mock.return_value,
-            is_ready=self.mock_resource_is.mock.return_value,
+            ready_statuses=["active"],
             check_interval=CONF.benchmark.glance_image_create_poll_interval,
             timeout=CONF.benchmark.glance_image_create_timeout)
-        self.mock_resource_is.mock.assert_called_once_with("active")
         self.mock_get_from_manager.mock.assert_called_once_with()
         self.assertEqual(self.mock_wait_for.mock.return_value, return_image)
         self._test_atomic_action_timer(scenario.atomic_actions(),
@@ -68,10 +67,9 @@ class GlanceScenarioTestCase(test.ScenarioTestCase):
         self.mock_wait_for.mock.assert_called_once_with(
             self.image,
             update_resource=self.mock_get_from_manager.mock.return_value,
-            is_ready=self.mock_resource_is.mock.return_value,
+            ready_statuses=["active"],
             check_interval=CONF.benchmark.glance_image_create_poll_interval,
             timeout=CONF.benchmark.glance_image_create_timeout)
-        self.mock_resource_is.mock.assert_called_once_with("active")
         self.mock_get_from_manager.mock.assert_called_once_with()
         self.assertEqual(self.mock_wait_for.mock.return_value, return_image)
         self._test_atomic_action_timer(scenario.atomic_actions(),
@@ -81,8 +79,10 @@ class GlanceScenarioTestCase(test.ScenarioTestCase):
         scenario = utils.GlanceScenario(context=self.context)
         scenario._delete_image(self.image)
         self.image.delete.assert_called_once_with()
-        self.mock_wait_for_delete.mock.assert_called_once_with(
+        self.mock_wait_for_status.mock.assert_called_once_with(
             self.image,
+            ready_statuses=["deleted"],
+            check_deletion=True,
             update_resource=self.mock_get_from_manager.mock.return_value,
             check_interval=CONF.benchmark.glance_image_delete_poll_interval,
             timeout=CONF.benchmark.glance_image_delete_timeout)

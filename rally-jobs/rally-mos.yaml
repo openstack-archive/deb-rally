@@ -1,9 +1,10 @@
+{%- set sahara_service_type = sahara_service_type|default("data_processing") %}
 ---
+{%- include "sahara.yaml" %}
 
   KeystoneBasic.create_user:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 1
@@ -14,8 +15,7 @@
 
   KeystoneBasic.create_delete_user:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 1
@@ -26,8 +26,7 @@
 
   KeystoneBasic.create_and_list_tenants:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 1
@@ -38,8 +37,7 @@
 
   KeystoneBasic.create_and_list_users:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 1
@@ -50,8 +48,7 @@
 
   KeystoneBasic.create_tenant:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 1
@@ -63,7 +60,6 @@
   KeystoneBasic.create_tenant_with_users:
     -
       args:
-        name_length: 10
         users_per_tenant: 10
       runner:
         type: "constant"
@@ -78,8 +74,7 @@
 
   KeystoneBasic.create_delete_user:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 1
@@ -112,40 +107,6 @@
 
   Authenticate.keystone:
     -
-      runner:
-        type: "constant"
-        times: 1
-        concurrency: 1
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  SaharaNodeGroupTemplates.create_and_list_node_group_templates:
-    -
-      args:
-        flavor:
-         name: "m1.small"
-      runner:
-        type: "constant"
-        times: 1
-        concurrency: 1
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  SaharaNodeGroupTemplates.create_delete_node_group_templates:
-    -
-      args:
-        flavor:
-         name: "m1.small"
       runner:
         type: "constant"
         times: 1
@@ -294,7 +255,7 @@
         image:
           name: "TestVM|cirros.*uec"
         floating_network: "net04_ext"
-        use_floatingip: true
+        use_floating_ip: true
         command:
           script_file: "~/.rally/extra/instance_dd_test.sh"
           interpreter: "/bin/sh"
@@ -463,20 +424,6 @@
         failure_rate:
           max: 0
 
-  HttpRequests.check_request:
-    -
-      args:
-        url: "http://www.example.com"
-        method: "GET"
-        status_code: 200
-      runner:
-        type: "constant"
-        times: 2
-        concurrency: 2
-      sla:
-        failure_rate:
-          max: 0
-
   NovaSecGroup.create_and_delete_secgroups:
     -
       args:
@@ -543,3 +490,339 @@
           nova:
             security_groups: -1
             security_group_rules: -1
+
+
+  NeutronNetworks.create_and_list_networks:
+    -
+      args:
+        network_create_args:
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+             network: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_list_subnets:
+    -
+      args:
+        network_create_args:
+        subnet_create_args:
+        subnet_cidr_start: "1.1.0.0/30"
+        subnets_per_network: 2
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+             network: -1
+             subnet: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_list_routers:
+    -
+      args:
+        network_create_args:
+        subnet_create_args:
+        subnet_cidr_start: "1.1.0.0/30"
+        subnets_per_network: 2
+        router_create_args:
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+             network: -1
+             subnet: -1
+             router: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_list_ports:
+    -
+      args:
+        network_create_args:
+        port_create_args:
+        ports_per_network: 4
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+             network: -1
+             subnet: -1
+             router: -1
+             port: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_update_networks:
+    -
+      args:
+        network_create_args: {}
+        network_update_args:
+            admin_state_up: False
+            name: "_updated"
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+            network: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_update_subnets:
+    -
+      args:
+        network_create_args: {}
+        subnet_create_args: {}
+        subnet_cidr_start: "1.4.0.0/16"
+        subnets_per_network: 2
+        subnet_update_args:
+            enable_dhcp: False
+            name: "_subnet_updated"
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 5
+          users_per_tenant: 5
+        quotas:
+          neutron:
+            network: -1
+            subnet: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_update_routers:
+    -
+      args:
+        network_create_args: {}
+        subnet_create_args: {}
+        subnet_cidr_start: "1.1.0.0/30"
+        subnets_per_network: 2
+        router_create_args: {}
+        router_update_args:
+            admin_state_up: False
+            name: "_router_updated"
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+            network: -1
+            subnet: -1
+            router: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_update_ports:
+    -
+      args:
+        network_create_args: {}
+        port_create_args: {}
+        ports_per_network: 5
+        port_update_args:
+            admin_state_up: False
+            device_id: "dummy_id"
+            device_owner: "dummy_owner"
+            name: "_port_updated"
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+            network: -1
+            port: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_delete_networks:
+    -
+      args:
+        network_create_args: {}
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+            network: -1
+            subnet: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_delete_subnets:
+    -
+      args:
+        network_create_args: {}
+        subnet_create_args: {}
+        subnet_cidr_start: "1.1.0.0/30"
+        subnets_per_network: 2
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+            network: -1
+            subnet: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  NeutronNetworks.create_and_delete_ports:
+    -
+      args:
+        network_create_args: {}
+        port_create_args: {}
+        ports_per_network: 10
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        network: {}
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        quotas:
+          neutron:
+            network: -1
+            port: -1
+      sla:
+        failure_rate:
+          max: 0
+
+  CinderVolumes.create_and_upload_volume_to_image:
+    -
+      args:
+        size: 1
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  CinderVolumes.create_volume_backup:
+    -
+      args:
+        size: 1
+        do_delete: True
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  CinderVolumes.create_and_restore_volume_backup:
+    -
+      args:
+        size: 1
+        do_delete: True
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  CinderVolumes.create_and_list_volume_backups:
+    -
+      args:
+        size: 1
+        detailed: True
+        do_delete: True
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0

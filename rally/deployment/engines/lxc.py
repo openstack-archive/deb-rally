@@ -19,9 +19,8 @@ import netaddr
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import objects
-from rally.common import utils
 from rally.deployment import engine
 from rally.deployment.serverprovider import provider
 from rally.deployment.serverprovider.providers import lxc
@@ -111,7 +110,7 @@ class LxcEngine(engine.Engine):
         return provider.ProviderFactory.get_provider(self.config["provider"],
                                                      self.deployment)
 
-    @utils.log_deploy_wrapper(LOG.info, _("Create containers on host"))
+    @logging.log_deploy_wrapper(LOG.info, _("Create containers on host"))
     def deploy(self):
         name = self.config["container_name"]
         start_script = self.config.get("start_script",
@@ -150,7 +149,7 @@ class LxcEngine(engine.Engine):
                 container.ssh.run("/bin/sh -e", stdin=open(start_script, "rb"))
             if network:
                 network += 1
-        return {"admin": objects.Endpoint("", "", "", "")}
+        return {"admin": objects.Credential("", "", "", "")}
 
     def cleanup(self):
         resources = self.deployment.get_resources()

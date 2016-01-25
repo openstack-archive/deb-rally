@@ -50,8 +50,8 @@ class TestCase(base.BaseTestCase):
         self.assertIsNotNone(action_duration)
         self.assertIsInstance(action_duration, float)
 
-    def assertSequenceEqual(self, iterable_1, iterable_2):
-        self.assertEqual(tuple(iterable_1), tuple(iterable_2))
+    def assertSequenceEqual(self, iterable_1, iterable_2, msg=None):
+        self.assertEqual(tuple(iterable_1), tuple(iterable_2), msg)
 
 
 class DBTestCase(TestCase):
@@ -110,10 +110,13 @@ class ScenarioTestCase(TestCase):
                 self.benchmark_utils + ".wait_for")
             self.mock_wait_for_delete = mockpatch.Patch(
                 self.benchmark_utils + ".wait_for_delete")
+            self.mock_wait_for_status = mockpatch.Patch(
+                self.benchmark_utils + ".wait_for_status")
             self.useFixture(self.mock_resource_is)
             self.useFixture(self.mock_get_from_manager)
             self.useFixture(self.mock_wait_for)
             self.useFixture(self.mock_wait_for_delete)
+            self.useFixture(self.mock_wait_for_status)
 
         self.mock_sleep = mockpatch.Patch("time.sleep")
         self.useFixture(self.mock_sleep)

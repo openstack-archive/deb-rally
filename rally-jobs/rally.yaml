@@ -1,8 +1,8 @@
+{%- set cirros_image_url = "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img" %}
 ---
   KeystoneBasic.create_user:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -13,8 +13,7 @@
 
   KeystoneBasic.create_delete_user:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -47,8 +46,7 @@
 
   KeystoneBasic.create_and_list_tenants:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -127,8 +125,7 @@
 
   KeystoneBasic.create_and_list_users:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -139,8 +136,7 @@
 
   KeystoneBasic.create_tenant:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -152,7 +148,6 @@
   KeystoneBasic.create_tenant_with_users:
     -
       args:
-        name_length: 10
         users_per_tenant: 10
       runner:
         type: "constant"
@@ -167,9 +162,7 @@
 
   KeystoneBasic.create_user_update_password:
     -
-      args:
-        name_length: 10
-        password_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -180,8 +173,7 @@
 
   KeystoneBasic.create_update_and_delete_tenant:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -192,8 +184,7 @@
 
   KeystoneBasic.create_delete_user:
     -
-      args:
-        name_length: 10
+      args: {}
       runner:
         type: "constant"
         times: 10
@@ -246,131 +237,6 @@
         users:
           tenants: 2
           users_per_tenant: 2
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerAlarms.create_alarm:
-    -
-      args:
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerAlarms.create_and_delete_alarm:
-    -
-      args:
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerAlarms.create_and_list_alarm:
-    -
-      args:
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerAlarms.create_and_update_alarm:
-    -
-      args:
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerAlarms.create_alarm_and_get_history:
-    -
-      args:
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        state: "ok"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 10
-        concurrency: 5
-      context:
-        users:
-          tenants: 2
-          users_per_tenant: 2
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerAlarms.list_alarms:
-    -
-      runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
       sla:
         failure_rate:
           max: 0
@@ -448,13 +314,21 @@
   CeilometerMeters.list_meters:
     -
       runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
+         type: constant
+         times: 10
+         concurrency: 2
       context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
+         users:
+           tenants: 1
+           users_per_tenant: 1
+         ceilometer:
+           counter_name: "benchmark_meter"
+           counter_type: "gauge"
+           counter_unit: "%"
+           counter_volume: 100
+           resources_per_tenant: 1
+           samples_per_resource: 1
+           timestamp_interval: 1
       sla:
         failure_rate:
           max: 0
@@ -462,13 +336,21 @@
   CeilometerResource.list_resources:
     -
       runner:
-        type: "constant"
-        times: 10
-        concurrency: 10
+         type: constant
+         times: 10
+         concurrency: 2
       context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
+         users:
+           tenants: 1
+           users_per_tenant: 1
+         ceilometer:
+           counter_name: "benchmark_meter"
+           counter_type: "gauge"
+           counter_unit: "%"
+           counter_volume: 100
+           resources_per_tenant: 1
+           samples_per_resource: 1
+           timestamp_interval: 1
       sla:
         failure_rate:
           max: 0
@@ -489,7 +371,18 @@
           counter_unit: "instance"
           counter_volume: 1.0
           resources_per_tenant: 3
-          samples_per_resource: 3
+          samples_per_resource: 10
+          timestamp_interval: 60
+          metadata_list:
+            -  status: "active"
+               name: "fake_resource"
+               deleted: "False"
+               created_at: "2015-09-04T12:34:19.000000"
+            -  status: "not_active"
+               name: "fake_resource_1"
+               deleted: "False"
+               created_at: "2015-09-10T06:55:12.000000"
+          batch_size: 5
       sla:
         failure_rate:
           max: 0
@@ -642,6 +535,30 @@
         type: "constant"
         times: 20
         concurrency: 5
+    -
+      args:
+        sleep: 30
+        message: "This scenario should be terminated by runner timeout."
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+        timeout: 1
+      sla:
+        failure_rate:
+          min: 100
+    -
+      args:
+        sleep: 30
+        message: "This scenario should be terminated by runner timeout."
+      runner:
+        type: "rps"
+        times: 1
+        rps: 1
+        timeout: 1
+      sla:
+        failure_rate:
+          min: 100
 
   Dummy.dummy_exception_probability:
     -
@@ -672,6 +589,16 @@
           min: 20
           max: 80
 
+  Dummy.dummy_output:
+    -
+      runner:
+        type: "constant"
+        times: 20
+        concurrency: 10
+      sla:
+        failure_rate:
+          max: 0
+
   Dummy.dummy_with_scenario_output:
     -
       runner:
@@ -701,74 +628,45 @@
         failure_rate:
           max: 0
 
-  CeilometerStats.create_meter_and_get_stats:
+  CeilometerStats.get_stats:
    -
-      args:
-        user_id: "user-id"
-        resource_id: "resource-id"
-        counter_volume: 1.0
-        counter_unit: ""
-        counter_type: "cumulative"
-      runner:
-        type: "constant"
-        times: 20
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerQueries.create_and_query_alarms:
-    -
-      args:
-        filter: {"and": [{"!=": {"state": "dummy_state"}},{"=": {"type": "threshold"}}]}
-        orderby: !!null
-        limit: 10
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 20
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  CeilometerQueries.create_and_query_alarm_history:
-    -
-      args:
-        orderby: !!null
-        limit: !!null
-        meter_name: "ram_util"
-        threshold: 10.0
-        type: "threshold"
-        statistic: "avg"
-        alarm_actions: ["http://localhost:8776/alarm"]
-        ok_actions: ["http://localhost:8776/ok"]
-        insufficient_data_actions: ["http://localhost:8776/notok"]
-      runner:
-        type: "constant"
-        times: 20
-        concurrency: 10
-      context:
-        users:
-          tenants: 1
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
+     runner:
+        type: constant
+        times: 10
+        concurrency: 2
+     context:
+       users:
+         tenants: 2
+         users_per_tenant: 2
+       ceilometer:
+         counter_name: "benchmark_meter"
+         counter_type: "gauge"
+         counter_unit: "%"
+         counter_volume: 100
+         resources_per_tenant: 100
+         samples_per_resource: 100
+         timestamp_interval: 10
+         metadata_list:
+           -
+             status: "active"
+             name: "rally benchmark on"
+             deleted: "false"
+           -
+             status: "terminated"
+             name: "rally benchmark off"
+             deleted: "true"
+     args:
+       meter_name: "benchmark_meter"
+       filter_by_user_id: true
+       filter_by_project_id: true
+       filter_by_resource_id: true
+       metadata_query:
+         status: "terminated"
+       period: 300
+       groupby: "resource_id"
+     sla:
+       failure_rate:
+         max: 0
 
   CeilometerQueries.create_and_query_samples:
     -
@@ -883,6 +781,24 @@
           tenants: 1
           users_per_tenant: 2
         images:
+          image_url: "{{ cirros_image_url }}"
+          image_type: "qcow2"
+          image_container: "bare"
+          images_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+    -
+      runner:
+        type: "constant"
+        times: 5
+        concurrency: 10
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 2
+        images:
           image_url: "~/.rally/extra/fake-image.img"
           image_type: "qcow2"
           image_container: "bare"
@@ -894,7 +810,7 @@
   GlanceImages.create_and_delete_image:
     -
       args:
-        image_location: "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img"
+        image_location: "{{ cirros_image_url }}"
         container_format: "bare"
         disk_format: "qcow2"
       runner:
@@ -930,7 +846,7 @@
   GlanceImages.create_image_and_boot_instances:
     -
       args:
-        image_location: "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img"
+        image_location: "{{ cirros_image_url }}"
         container_format: "bare"
         disk_format: "qcow2"
         flavor:
@@ -947,7 +863,6 @@
       sla:
         failure_rate:
           max: 0
-
 
   SwiftObjects.create_container_and_object_then_list_objects:
     -
@@ -1034,6 +949,46 @@
         users:
           tenants: 3
           users_per_tenant: 2
+      sla:
+        failure_rate:
+          max: 0
+
+  SwiftObjects.list_and_download_objects_in_containers:
+    -
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        roles:
+          - "admin"
+        swift_objects:
+          containers_per_tenant: 1
+          objects_per_container: 5
+          object_size: 10240
+      sla:
+        failure_rate:
+          max: 0
+
+  SwiftObjects.list_objects_in_containers:
+    -
+      runner:
+        type: "constant"
+        times: 6
+        concurrency: 3
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        roles:
+          - "admin"
+        swift_objects:
+          containers_per_tenant: 1
+          objects_per_container: 10
+          object_size: 1024
       sla:
         failure_rate:
           max: 0

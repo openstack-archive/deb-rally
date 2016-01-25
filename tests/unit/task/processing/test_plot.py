@@ -15,6 +15,7 @@
 
 import json
 
+import ddt
 import mock
 
 from rally.task.processing import plot
@@ -23,6 +24,7 @@ from tests.unit import test
 PLOT = "rally.task.processing.plot."
 
 
+@ddt.ddt
 class PlotTestCase(test.TestCase):
 
     @mock.patch(PLOT + "charts")
@@ -31,16 +33,17 @@ class PlotTestCase(test.TestCase):
                 (mock_charts.MainStatsTable, "main_stats"),
                 (mock_charts.MainStackedAreaChart, "main_stacked"),
                 (mock_charts.AtomicStackedAreaChart, "atomic_stacked"),
-                (mock_charts.OutputStackedAreaChart, "output_stacked"),
+                (mock_charts.OutputStackedAreaDeprecatedChart,
+                 "output_stacked"),
                 (mock_charts.LoadProfileChart, "load_profile"),
-                (mock_charts.MainHistogramChart, ["main_histogram"]),
-                (mock_charts.AtomicHistogramChart, ["atomic_histogram"]),
+                (mock_charts.MainHistogramChart, "main_histogram"),
+                (mock_charts.AtomicHistogramChart, "atomic_histogram"),
                 (mock_charts.AtomicAvgChart, "atomic_avg")]:
             setattr(mock_ins.return_value.render, "return_value", ret)
         iterations = [
             {"timestamp": i + 2, "error": [],
              "duration": i + 5, "idle_duration": i,
-             "scenario_output": {"errors": "", "data": {}},
+             "output": {"additive": [], "complete": []},
              "atomic_actions": {"foo_action": i + 10}} for i in range(10)]
         data = {"iterations": iterations, "sla": [],
                 "key": {"kw": {"runner": {"type": "constant"}},
@@ -61,14 +64,16 @@ class PlotTestCase(test.TestCase):
                     {"Foo.bar": [{"runner": {"type": "constant"}}]},
                     indent=2),
                 "full_duration": 40, "load_duration": 32,
-                "atomic": {"histogram": ["atomic_histogram"],
+                "atomic": {"histogram": "atomic_histogram",
                            "iter": "atomic_stacked", "pie": "atomic_avg"},
                 "iterations": {"histogram": "main_histogram",
                                "iter": "main_stacked",
                                "pie": [("success", 10), ("errors", 0)]},
                 "iterations_count": 10, "errors": [],
                 "load_profile": "load_profile",
-                "output": "output_stacked", "output_errors": [],
+                "additive_output": [],
+                "complete_output": [[], [], [], [], [], [], [], [], [], []],
+                "output_errors": [],
                 "sla": [], "sla_success": True, "table": "main_stats"})
 
     @mock.patch(PLOT + "_process_scenario")
@@ -77,23 +82,32 @@ class PlotTestCase(test.TestCase):
         tasks_results = [{"key": {"name": i, "kw": "kw_" + i}}
                          for i in ("a", "b", "c", "b")]
         mock__process_scenario.side_effect = lambda a, b: (
-            {"cls": "%s_cls" % a["key"]["name"], "name": str(b)})
+            {"cls": "%s_cls" % a["key"]["name"],
+             "name": str(b),
+             "met": "dummy",
+             "pos": str(b)})
         source, tasks = plot._process_tasks(tasks_results)
         self.assertEqual(source, "json_data")
         mock_json_dumps.assert_called_once_with(
             {"a": ["kw_a"], "b": ["kw_b", "kw_b"], "c": ["kw_c"]},
             sort_keys=True, indent=2)
         self.assertEqual(
-            sorted(tasks, key=lambda x: x["cls"] + x["name"]),
-            [{"cls": "a_cls", "name": "0"}, {"cls": "b_cls", "name": "0"},
-             {"cls": "b_cls", "name": "1"}, {"cls": "c_cls", "name": "0"}])
+            tasks,
+            [{"cls": "a_cls", "met": "dummy", "name": "0", "pos": "0"},
+             {"cls": "b_cls", "met": "dummy", "name": "0", "pos": "0"},
+             {"cls": "b_cls", "met": "dummy", "name": "1", "pos": "1"},
+             {"cls": "c_cls", "met": "dummy", "name": "0", "pos": "0"}])
 
+    @ddt.data({},
+              {"include_libs": True},
+              {"include_libs": False})
+    @ddt.unpack
     @mock.patch(PLOT + "_process_tasks")
     @mock.patch(PLOT + "objects")
     @mock.patch(PLOT + "ui_utils.get_template")
     @mock.patch(PLOT + "json.dumps", side_effect=lambda s: "json_" + s)
     def test_plot(self, mock_dumps, mock_get_template, mock_objects,
-                  mock__process_tasks):
+                  mock__process_tasks, **ddt_kwargs):
         mock__process_tasks.return_value = "source", "scenarios"
         mock_get_template.return_value.render.return_value = "tasks_html"
         mock_objects.Task.extend_results.return_value = ["extended_result"]
@@ -101,7 +115,7 @@ class PlotTestCase(test.TestCase):
             {"key": "foo_key", "sla": "foo_sla", "result": "foo_result",
              "full_duration": "foo_full_duration",
              "load_duration": "foo_load_duration"}]
-        html = plot.plot(tasks_results)
+        html = plot.plot(tasks_results, **ddt_kwargs)
         self.assertEqual(html, "tasks_html")
         generic_results = [
             {"id": None, "created_at": None, "updated_at": None,
@@ -112,7 +126,13 @@ class PlotTestCase(test.TestCase):
                       "load_duration": "foo_load_duration"}}]
         mock_objects.Task.extend_results.assert_called_once_with(
             generic_results)
-        mock_get_template.assert_called_once_with("task/report.mako")
+        mock_get_template.assert_called_once_with("task/report.html")
         mock__process_tasks.assert_called_once_with(["extended_result"])
-        mock_get_template.return_value.render.assert_called_once_with(
-            data="json_scenarios", source="json_source")
+        if "include_libs" in ddt_kwargs:
+            mock_get_template.return_value.render.assert_called_once_with(
+                data="json_scenarios", source="json_source",
+                include_libs=ddt_kwargs["include_libs"])
+        else:
+            mock_get_template.return_value.render.assert_called_once_with(
+                data="json_scenarios", source="json_source",
+                include_libs=False)

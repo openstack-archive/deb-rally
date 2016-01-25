@@ -112,13 +112,12 @@ class VMScenarioTestCase(test.ScenarioTestCase):
         vm_scenario = utils.VMScenario(self.context)
         vm_scenario._ping_ip_address = mock.Mock(return_value=True)
         vm_scenario._wait_for_ping(netaddr.IPAddress("1.2.3.4"))
-        self.mock_wait_for.mock.assert_called_once_with(
-            netaddr.IPAddress("1.2.3.4"),
-            is_ready=self.mock_resource_is.mock.return_value,
+        self.mock_wait_for_status.mock.assert_called_once_with(
+            utils.Host("1.2.3.4"),
+            ready_statuses=[utils.Host.ICMP_UP_STATUS],
+            update_resource=utils.Host.update_status,
             timeout=CONF.benchmark.vm_ping_timeout,
             check_interval=CONF.benchmark.vm_ping_poll_interval)
-        self.mock_resource_is.mock.assert_called_once_with(
-            "ICMP UP", vm_scenario._ping_ip_address)
 
     @mock.patch(VMTASKS_UTILS + ".VMScenario._run_command_over_ssh")
     @mock.patch("rally.common.sshutils.SSH")
@@ -136,66 +135,6 @@ class VMScenarioTestCase(test.ScenarioTestCase):
         mock_vm_scenario__run_command_over_ssh.assert_called_once_with(
             mock_sshutils_ssh.return_value,
             {"script_file": "foo", "interpreter": "bar"})
-
-    @mock.patch(VMTASKS_UTILS + ".sys")
-    @mock.patch("subprocess.Popen")
-    def test__ping_ip_address_linux(self, mock_popen, mock_sys):
-        mock_popen.return_value.returncode = 0
-        mock_sys.platform = "linux2"
-
-        vm_scenario = utils.VMScenario(self.context)
-        host_ip = netaddr.IPAddress("1.2.3.4")
-        self.assertTrue(vm_scenario._ping_ip_address(host_ip))
-
-        mock_popen.assert_called_once_with(
-            ["ping", "-c1", "-w1", str(host_ip)],
-            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        mock_popen.return_value.wait.assert_called_once_with()
-
-    @mock.patch(VMTASKS_UTILS + ".sys")
-    @mock.patch("subprocess.Popen")
-    def test__ping_ip_address_linux_ipv6(self, mock_popen, mock_sys):
-        mock_popen.return_value.returncode = 0
-        mock_sys.platform = "linux2"
-
-        vm_scenario = utils.VMScenario(self.context)
-        host_ip = netaddr.IPAddress("1ce:c01d:bee2:15:a5:900d:a5:11fe")
-        self.assertTrue(vm_scenario._ping_ip_address(host_ip))
-
-        mock_popen.assert_called_once_with(
-            ["ping6", "-c1", "-w1", str(host_ip)],
-            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        mock_popen.return_value.wait.assert_called_once_with()
-
-    @mock.patch(VMTASKS_UTILS + ".sys")
-    @mock.patch("subprocess.Popen")
-    def test__ping_ip_address_other_os(self, mock_popen, mock_sys):
-        mock_popen.return_value.returncode = 0
-        mock_sys.platform = "freebsd10"
-
-        vm_scenario = utils.VMScenario(self.context)
-        host_ip = netaddr.IPAddress("1.2.3.4")
-        self.assertTrue(vm_scenario._ping_ip_address(host_ip))
-
-        mock_popen.assert_called_once_with(
-            ["ping", "-c1", str(host_ip)],
-            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        mock_popen.return_value.wait.assert_called_once_with()
-
-    @mock.patch(VMTASKS_UTILS + ".sys")
-    @mock.patch("subprocess.Popen")
-    def test__ping_ip_address_other_os_ipv6(self, mock_popen, mock_sys):
-        mock_popen.return_value.returncode = 0
-        mock_sys.platform = "freebsd10"
-
-        vm_scenario = utils.VMScenario(self.context)
-        host_ip = netaddr.IPAddress("1ce:c01d:bee2:15:a5:900d:a5:11fe")
-        self.assertTrue(vm_scenario._ping_ip_address(host_ip))
-
-        mock_popen.assert_called_once_with(
-            ["ping6", "-c1", str(host_ip)],
-            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        mock_popen.return_value.wait.assert_called_once_with()
 
     def get_scenario(self):
         server = mock.Mock(
@@ -281,14 +220,13 @@ class VMScenarioTestCase(test.ScenarioTestCase):
         scenario._attach_floating_ip(
             server, floating_network="bar_network")
 
-        mock_wrap.assert_called_once_with(scenario.clients,
-                                          self.context["task"])
+        mock_wrap.assert_called_once_with(scenario.clients, scenario)
         netwrap.create_floating_ip.assert_called_once_with(
             ext_network="bar_network",
             tenant_id="foo_tenant", fixed_ip="foo_ip")
 
         scenario._associate_floating_ip.assert_called_once_with(
-            server, "foo_ip", fixed_address="foo_ip")
+            server, "foo_ip", fixed_address="foo_ip", atomic_action=False)
 
     @mock.patch(VMTASKS_UTILS + ".network_wrapper.wrap")
     def test__delete_floating_ip(self, mock_wrap):
@@ -305,8 +243,70 @@ class VMScenarioTestCase(test.ScenarioTestCase):
             "foo_ip")
         _check_addr.assert_called_once_with(server)
         scenario._dissociate_floating_ip.assert_called_once_with(
-            server, "foo_ip")
-        mock_wrap.assert_called_once_with(scenario.clients,
-                                          self.context["task"])
+            server, "foo_ip", atomic_action=False)
+        mock_wrap.assert_called_once_with(scenario.clients, scenario)
         mock_wrap.return_value.delete_floating_ip.assert_called_once_with(
             "foo_id", wait=True)
+
+
+class HostTestCase(test.TestCase):
+
+    @mock.patch(VMTASKS_UTILS + ".sys")
+    @mock.patch("subprocess.Popen")
+    def test__ping_ip_address_linux(self, mock_popen, mock_sys):
+        mock_popen.return_value.returncode = 0
+        mock_sys.platform = "linux2"
+
+        host = utils.Host("1.2.3.4")
+        self.assertEqual(utils.Host.ICMP_UP_STATUS,
+                         utils.Host.update_status(host).status)
+
+        mock_popen.assert_called_once_with(
+            ["ping", "-c1", "-w1", str(host.ip)],
+            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        mock_popen.return_value.wait.assert_called_once_with()
+
+    @mock.patch(VMTASKS_UTILS + ".sys")
+    @mock.patch("subprocess.Popen")
+    def test__ping_ip_address_linux_ipv6(self, mock_popen, mock_sys):
+        mock_popen.return_value.returncode = 0
+        mock_sys.platform = "linux2"
+
+        host = utils.Host("1ce:c01d:bee2:15:a5:900d:a5:11fe")
+        self.assertEqual(utils.Host.ICMP_UP_STATUS,
+                         utils.Host.update_status(host).status)
+
+        mock_popen.assert_called_once_with(
+            ["ping6", "-c1", "-w1", str(host.ip)],
+            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        mock_popen.return_value.wait.assert_called_once_with()
+
+    @mock.patch(VMTASKS_UTILS + ".sys")
+    @mock.patch("subprocess.Popen")
+    def test__ping_ip_address_other_os(self, mock_popen, mock_sys):
+        mock_popen.return_value.returncode = 0
+        mock_sys.platform = "freebsd10"
+
+        host = utils.Host("1.2.3.4")
+        self.assertEqual(utils.Host.ICMP_UP_STATUS,
+                         utils.Host.update_status(host).status)
+
+        mock_popen.assert_called_once_with(
+            ["ping", "-c1", str(host.ip)],
+            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        mock_popen.return_value.wait.assert_called_once_with()
+
+    @mock.patch(VMTASKS_UTILS + ".sys")
+    @mock.patch("subprocess.Popen")
+    def test__ping_ip_address_other_os_ipv6(self, mock_popen, mock_sys):
+        mock_popen.return_value.returncode = 0
+        mock_sys.platform = "freebsd10"
+
+        host = utils.Host("1ce:c01d:bee2:15:a5:900d:a5:11fe")
+        self.assertEqual(utils.Host.ICMP_UP_STATUS,
+                         utils.Host.update_status(host).status)
+
+        mock_popen.assert_called_once_with(
+            ["ping6", "-c1", str(host.ip)],
+            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        mock_popen.return_value.wait.assert_called_once_with()

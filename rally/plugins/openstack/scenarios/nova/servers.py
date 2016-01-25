@@ -15,7 +15,7 @@
 
 import jsonschema
 
-from rally.common import log as logging
+from rally.common import logging
 from rally import consts
 from rally import exceptions as rally_exceptions
 from rally.plugins.openstack import scenario
@@ -32,9 +32,6 @@ LOG = logging.getLogger(__name__)
 class NovaServers(utils.NovaScenario,
                   cinder_utils.CinderScenario):
     """Benchmark scenarios for Nova servers."""
-
-    RESOURCE_NAME_PREFIX = "rally_novaserver_"
-    RESOURCE_NAME_LENGTH = 16
 
     @types.set(image=types.ImageResourceType,
                flavor=types.FlavorResourceType)
@@ -329,7 +326,7 @@ class NovaServers(utils.NovaScenario,
 
         A rescue will be issued on the given server upon which time
         this method will wait for the server to become 'RESCUE'.
-        Once the server is RESCUE a unrescue will be issued and
+        Once the server is RESCUE an unrescue will be issued and
         this method will wait for the server to become 'ACTIVE'
         again.
 
@@ -368,6 +365,114 @@ class NovaServers(utils.NovaScenario,
         else:
             self._resize_revert(server)
         self._delete_server(server, force=force_delete)
+
+    @types.set(image=types.ImageResourceType,
+               flavor=types.FlavorResourceType,
+               to_flavor=types.FlavorResourceType)
+    @validation.image_valid_on_flavor("flavor", "image")
+    @validation.required_services(consts.Service.NOVA, consts.Service.CINDER)
+    @validation.required_openstack(users=True)
+    @scenario.configure(context={"cleanup": ["cinder", "nova"]})
+    def boot_server_attach_created_volume_and_resize(
+            self, image, flavor, to_flavor, volume_size, min_sleep=0,
+            max_sleep=0, force_delete=False, confirm=True, do_delete=True,
+            boot_server_kwargs=None, create_volume_kwargs=None):
+        """Create a VM from image, attach a volume to it and resize.
+
+        Simple test to create a VM and attach a volume, then resize the VM,
+        detach the volume then delete volume and VM.
+        Optional 'min_sleep' and 'max_sleep' parameters allow the scenario
+        to simulate a pause between attaching a volume and running resize
+        (of random duration from range [min_sleep, max_sleep]).
+        :param image: Glance image name to use for the VM
+        :param flavor: VM flavor name
+        :param to_flavor: flavor to be used to resize the booted instance
+        :param volume_size: volume size (in GB)
+        :param min_sleep: Minimum sleep time in seconds (non-negative)
+        :param max_sleep: Maximum sleep time in seconds (non-negative)
+        :param force_delete: True if force_delete should be used
+        :param confirm: True if need to confirm resize else revert resize
+        :param do_delete: True if resources needs to be deleted explicitly
+                        else use rally cleanup to remove resources
+        :param boot_server_kwargs: optional arguments for VM creation
+        :param create_volume_kwargs: optional arguments for volume creation
+        """
+        boot_server_kwargs = boot_server_kwargs or {}
+        create_volume_kwargs = create_volume_kwargs or {}
+
+        server = self._boot_server(image, flavor, **boot_server_kwargs)
+        volume = self._create_volume(volume_size, **create_volume_kwargs)
+
+        self._attach_volume(server, volume)
+        self.sleep_between(min_sleep, max_sleep)
+        self._resize(server, to_flavor)
+
+        if confirm:
+            self._resize_confirm(server)
+        else:
+            self._resize_revert(server)
+
+        if do_delete:
+            self._detach_volume(server, volume)
+            self._delete_volume(volume)
+            self._delete_server(server, force=force_delete)
+
+    @types.set(image=types.ImageResourceType,
+               flavor=types.FlavorResourceType,
+               to_flavor=types.FlavorResourceType)
+    @validation.image_valid_on_flavor("flavor", "image")
+    @validation.required_services(consts.Service.NOVA, consts.Service.CINDER)
+    @validation.required_openstack(users=True)
+    @scenario.configure(context={"cleanup": ["nova", "cinder"]})
+    def boot_server_from_volume_and_resize(
+            self, image, flavor, to_flavor, volume_size, min_sleep=0,
+            max_sleep=0, force_delete=False, confirm=True, do_delete=True,
+            boot_server_kwargs=None, create_volume_kwargs=None):
+        """Boot a server from volume, then resize and delete it.
+
+        The scenario first creates a volume and then a server.
+        Optional 'min_sleep' and 'max_sleep' parameters allow the scenario
+        to simulate a pause between volume creation and deletion
+        (of random duration from [min_sleep, max_sleep]).
+
+        This test will confirm the resize by default,
+        or revert the resize if confirm is set to false.
+
+        :param image: image to be used to boot an instance
+        :param flavor: flavor to be used to boot an instance
+        :param to_flavor: flavor to be used to resize the booted instance
+        :param volume_size: volume size (in GB)
+        :param min_sleep: Minimum sleep time in seconds (non-negative)
+        :param max_sleep: Maximum sleep time in seconds (non-negative)
+        :param force_delete: True if force_delete should be used
+        :param confirm: True if need to confirm resize else revert resize
+        :param do_delete: True if resources needs to be deleted explicitly
+                        else use rally cleanup to remove resources
+        :param boot_server_kwargs: optional arguments for VM creation
+        :param create_volume_kwargs: optional arguments for volume creation
+        """
+        boot_server_kwargs = boot_server_kwargs or {}
+        create_volume_kwargs = create_volume_kwargs or {}
+
+        if boot_server_kwargs.get("block_device_mapping"):
+            LOG.warning("Using already existing volume is not permitted.")
+
+        volume = self._create_volume(volume_size, imageRef=image,
+                                     **create_volume_kwargs)
+        boot_server_kwargs["block_device_mapping"] = {
+            "vda": "%s:::1" % volume.id}
+
+        server = self._boot_server(image, flavor, **boot_server_kwargs)
+        self.sleep_between(min_sleep, max_sleep)
+        self._resize(server, to_flavor)
+
+        if confirm:
+            self._resize_confirm(server)
+        else:
+            self._resize_revert(server)
+
+        if do_delete:
+            self._delete_server(server, force=force_delete)
 
     @types.set(image=types.ImageResourceType,
                flavor=types.FlavorResourceType)
@@ -641,7 +746,49 @@ class NovaServers(utils.NovaScenario,
         :param kwargs: Optional additional arguments for server creation
         """
         server = self._boot_server(image, flavor, **kwargs)
-        address = network_wrapper.wrap(
-            self.clients, self.context["task"]).create_floating_ip(
-                tenant_id=server.tenant_id)
+        address = network_wrapper.wrap(self.clients, self).create_floating_ip(
+            tenant_id=server.tenant_id)
         self._associate_floating_ip(server, address["ip"])
+
+    @types.set(image=types.ImageResourceType,
+               flavor=types.FlavorResourceType)
+    @validation.image_valid_on_flavor("flavor", "image")
+    @validation.required_services(consts.Service.NOVA)
+    @validation.required_openstack(users=True)
+    @scenario.configure(context={"cleanup": ["nova"]})
+    def boot_and_show_server(self, image, flavor, **kwargs):
+        """Show server details.
+
+        This simple scenario tests the nova show command by retrieving
+        the server details.
+        :param image: image to be used to boot an instance
+        :param flavor: flavor to be used to boot an instance
+        :param kwargs: Optional additional arguments for server creation
+
+        :returns: Server details
+        """
+        server = self._boot_server(image, flavor, **kwargs)
+        self._show_server(server)
+
+    @types.set(image=types.ImageResourceType,
+               flavor=types.FlavorResourceType)
+    @validation.image_valid_on_flavor("flavor", "image")
+    @validation.required_services(consts.Service.NOVA)
+    @validation.required_openstack(users=True)
+    @scenario.configure(context={"cleanup": ["nova"]})
+    def boot_and_get_console_output(self, image, flavor,
+                                    length=None, **kwargs):
+        """Get text console output from server.
+
+        This simple scenario tests the nova console-log command by retrieving
+        the text console log output.
+        :param image: image to be used to boot an instance
+        :param flavor: flavor to be used to boot an instance
+        :param length: The number of tail log lines you would like to retrieve.
+                       None (default value) or -1 means unlimited length.
+        :param kwargs: Optional additional arguments for server creation
+
+        :returns: Text console log output for server
+        """
+        server = self._boot_server(image, flavor, **kwargs)
+        self._get_server_console_output(server, length)

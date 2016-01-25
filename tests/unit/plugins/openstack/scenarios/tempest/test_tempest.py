@@ -31,8 +31,8 @@ class TempestScenarioTestCase(test.TestCase):
         self.verifier = verifier.Tempest("fake_uuid")
         self.verifier.log_file_raw = "/dev/null"
         self.verifier.parse_results = mock.MagicMock()
-        self.verifier.parse_results.return_value = ({"fake": True},
-                                                    {"have_results": True})
+        self.verifier.parse_results.return_value = mock.MagicMock(
+            tests={}, total={"time": 0})
         self.context = test.get_test_context()
         self.context.update({"verifier": self.verifier,
                              "tmp_results_dir": "/dev"})
@@ -40,13 +40,11 @@ class TempestScenarioTestCase(test.TestCase):
         self.scenario._add_atomic_actions = mock.MagicMock()
 
     def get_tests_launcher_cmd(self, tests):
-        return ("%(venv)s testr run --parallel --subunit %(tests)s "
+        return ("%(venv)s testr run --subunit --parallel %(tests)s "
                 "| tee /dev/null "
-                "| %(venv)s subunit-2to1 "
-                "| %(venv)s %(tempest_path)s/tools/colorizer.py" %
+                "| %(venv)s subunit-trace -f -n" %
                 {
                     "venv": self.verifier.venv_wrapper,
-                    "tempest_path": self.verifier.path(),
                     "tests": " ".join(tests)
                 })
 

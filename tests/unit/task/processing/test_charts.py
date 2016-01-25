@@ -17,6 +17,7 @@ import ddt
 import mock
 
 from rally.common import costilius
+from rally.common.plugin import plugin
 from rally.task.processing import charts
 from tests.unit import test
 
@@ -26,20 +27,24 @@ CHARTS = "rally.task.processing.charts."
 class ChartTestCase(test.TestCase):
 
     class Chart(charts.Chart):
+
+        widget = "FooWidget"
+
         def _map_iteration_values(self, iteration):
             return [("foo_" + k, iteration[k]) for k in ["a", "b"]]
 
     @property
-    def bench_info(self):
+    def wload_info(self):
         return {"iterations_count": 42, "atomic": {"a": {}, "b": {}, "c": {}}}
 
     def test___init__(self):
-        self.assertRaises(TypeError, charts.Chart, self.bench_info)
-        chart = self.Chart(self.bench_info)
+        self.assertRaises(TypeError, charts.Chart, self.wload_info)
+        chart = self.Chart(self.wload_info)
+        self.assertIsInstance(chart, plugin.Plugin)
         self.assertEqual({}, chart._data)
         self.assertEqual(42, chart.base_size)
         self.assertEqual(1000, chart.zipped_size)
-        chart = self.Chart(self.bench_info, zipped_size=24)
+        chart = self.Chart(self.wload_info, zipped_size=24)
         self.assertEqual({}, chart._data)
         self.assertEqual(42, chart.base_size)
         self.assertEqual(24, chart.zipped_size)
@@ -49,7 +54,7 @@ class ChartTestCase(test.TestCase):
         gzipper_a = mock.Mock(get_zipped_graph=lambda: "a_points")
         gzipper_b = mock.Mock(get_zipped_graph=lambda: "b_points")
         mock_graph_zipper.side_effect = [gzipper_a, gzipper_b]
-        chart = self.Chart(self.bench_info, 24)
+        chart = self.Chart(self.wload_info, 24)
         self.assertEqual([], chart.render())
         [chart.add_iteration(itr) for itr in [{"a": 1, "b": 2},
                                               {"a": 3, "b": 4}]]
@@ -64,7 +69,7 @@ class ChartTestCase(test.TestCase):
                          chart.render())
 
     def test__fix_atomic_actions(self):
-        chart = self.Chart(self.bench_info)
+        chart = self.Chart(self.wload_info)
         self.assertEqual(
             {"atomic_actions": {"a": 5, "b": 6, "c": 0}},
             chart._fix_atomic_actions({"atomic_actions": {"a": 5, "b": 6}}))
@@ -134,19 +139,6 @@ class AtomicStackedAreaChartTestCase(test.TestCase):
         self.assertEqual(expected, sorted(chart.render()))
 
 
-class OutputStackedAreaChartTestCase(test.TestCase):
-
-    def test_add_iteration_and_render(self):
-        chart = charts.OutputStackedAreaChart(
-            {"iterations_count": 3, "output_names": ["foo", "bar"]}, 10)
-        self.assertIsInstance(chart, charts.Chart)
-        [chart.add_iteration({"scenario_output": {"data": x}})
-         for x in ({"foo": 1.1, "bar": 1.2}, {"foo": 1.3}, {"bar": 1.4})]
-        expected = [("bar", [[1, 1.2], [2, 0], [3, 1.4]]),
-                    ("foo", [[1, 1.1], [2, 1.3], [3, 0]])]
-        self.assertEqual(expected, sorted(chart.render()))
-
-
 class AvgChartTestCase(test.TestCase):
 
     class AvgChart(charts.AvgChart):
@@ -212,9 +204,9 @@ class HistogramChartTestCase(test.TestCase):
 
     class HistogramChart(charts.HistogramChart):
 
-        def __init__(self, benchmark_info):
+        def __init__(self, workload_info):
             super(HistogramChartTestCase.HistogramChart,
-                  self).__init__(benchmark_info)
+                  self).__init__(workload_info)
             self._data["bar"] = {"views": self._init_views(1.2, 4.2),
                                  "disabled": None}
 
@@ -228,21 +220,19 @@ class HistogramChartTestCase(test.TestCase):
         self.assertIsInstance(chart, charts.HistogramChart)
         [chart.add_iteration({"foo": x}) for x in ({"bar": 1.2}, {"bar": 2.4},
                                                    {"bar": 4.2})]
-        expected = [[{"disabled": None, "key": "bar",
-                      "values": [{"x": 2.7, "y": 2}, {"x": 4.2, "y": 1}],
-                      "view": "Square Root Choice"},
-                     {"disabled": None, "key": "bar",
-                      "values": [{"x": 2.2, "y": 1}, {"x": 3.2, "y": 1},
-                                 {"x": 4.2, "y": 1}],
-                      "view": "Sturges Formula"},
-                     {"disabled": None,
-                      "key": "bar",
-                      "values": [{"x": 2.2, "y": 1}, {"x": 3.2, "y": 1},
-                                 {"x": 4.2, "y": 1}],
-                      "view": "Rice Rule"},
-                     {"disabled": None, "key": "bar",
-                      "values": [{"x": 2.7, "y": 2}, {"x": 4.2, "y": 1}],
-                      "view": "One Half"}]]
+        expected = {
+            "data": [
+                [{"disabled": None, "key": "bar", "view": "Square Root Choice",
+                  "values": [{"x": 2.7, "y": 2}, {"x": 4.2, "y": 1}]}],
+                [{"disabled": None, "key": "bar", "view": "Sturges Formula",
+                  "values": [{"x": 2.2, "y": 1}, {"x": 3.2, "y": 1},
+                             {"x": 4.2, "y": 1}]}],
+                [{"disabled": None, "key": "bar", "view": "Rice Rule",
+                  "values": [{"x": 2.2, "y": 1}, {"x": 3.2, "y": 1},
+                             {"x": 4.2, "y": 1}]}]],
+            "views": [{"id": 0, "name": "Square Root Choice"},
+                      {"id": 1, "name": "Sturges Formula"},
+                      {"id": 2, "name": "Rice Rule"}]}
         self.assertEqual(expected, chart.render())
 
     @ddt.data(
@@ -252,8 +242,7 @@ class HistogramChartTestCase(test.TestCase):
                       {"bins": 2, "view": "Sturges Formula",
                        "x": [2.5, 4.0], "y": [0, 0]},
                       {"bins": 3, "view": "Rice Rule",
-                       "x": [2.0, 3.0, 4.0], "y": [0, 0, 0]},
-                      {"bins": 1, "view": "One Half", "x": [4.0], "y": [0]}]},
+                       "x": [2.0, 3.0, 4.0], "y": [0, 0, 0]}]},
         {"base_size": 100, "min_value": 27, "max_value": 42,
          "expected": [
              {"bins": 10, "view": "Square Root Choice",
@@ -264,14 +253,7 @@ class HistogramChartTestCase(test.TestCase):
                     42.0], "y": [0, 0, 0, 0, 0, 0, 0, 0]},
              {"bins": 10, "view": "Rice Rule",
               "x": [28.5, 30.0, 31.5, 33.0, 34.5, 36.0, 37.5, 39.0, 40.5,
-                    42.0], "y": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]},
-             {"bins": 50, "view": "One Half",
-              "x": [27.3, 27.6, 27.9, 28.2, 28.5, 28.8, 29.1, 29.4, 29.7,
-                    30.0, 30.3, 30.6, 30.9, 31.2, 31.5, 31.8, 32.1, 32.4,
-                    32.7, 33.0, 33.3, 33.6, 33.9, 34.2, 34.5, 34.8, 35.1,
-                    35.4, 35.7, 36.0, 36.3, 36.6, 36.9, 37.2, 37.5, 37.8,
-                    38.1, 38.4, 38.7, 39.0, 39.3, 39.6, 39.9, 40.2, 40.5,
-                    40.8, 41.1, 41.4, 41.7, 42.0], "y": [0] * 50}]})
+                    42.0], "y": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}]})
     @ddt.unpack
     def test_views(self, base_size=None, min_value=None, max_value=None,
                    expected=None):
@@ -289,20 +271,23 @@ class MainHistogramChartTestCase(test.TestCase):
             {"duration": 1.1, "idle_duration": 2.2, "error": None},
             {"error": True},
             {"duration": 1.3, "idle_duration": 3.4, "error": None})]
-        expected = [
-            {"disabled": None, "key": "task", "view": "Square Root Choice",
-             "values": [{"x": 4.5, "y": 3}, {"x": 7.0, "y": 0}]},
-            {"disabled": None, "key": "task", "view": "Sturges Formula",
-             "values": [{"x": 3.666666666666667, "y": 3},
-                        {"x": 5.333333333333334, "y": 0},
-                        {"x": 7.0, "y": 0}]},
-            {"disabled": None, "key": "task", "view": "Rice Rule",
-             "values": [{"x": 3.666666666666667, "y": 3},
-                        {"x": 5.333333333333334, "y": 0},
-                        {"x": 7.0, "y": 0}]},
-            {"disabled": None, "key": "task", "view": "One Half",
-             "values": [{"x": 4.5, "y": 3}, {"x": 7.0, "y": 0}]}]
-        self.assertEqual([expected], chart.render())
+        expected = {
+            "data": [
+                [{"disabled": None, "key": "task",
+                  "values": [{"x": 4.5, "y": 3}, {"x": 7.0, "y": 0}],
+                  "view": "Square Root Choice"}],
+                [{"disabled": None, "key": "task", "view": "Sturges Formula",
+                  "values": [{"x": 3.666666666666667, "y": 3},
+                             {"x": 5.333333333333334, "y": 0},
+                             {"x": 7.0, "y": 0}]}],
+                [{"disabled": None, "key": "task", "view": "Rice Rule",
+                  "values": [{"x": 3.666666666666667, "y": 3},
+                             {"x": 5.333333333333334, "y": 0},
+                             {"x": 7.0, "y": 0}]}]],
+            "views": [{"id": 0, "name": "Square Root Choice"},
+                      {"id": 1, "name": "Sturges Formula"},
+                      {"id": 2, "name": "Rice Rule"}]}
+        self.assertEqual(expected, chart.render())
 
 
 class AtomicHistogramChartTestCase(test.TestCase):
@@ -316,28 +301,86 @@ class AtomicHistogramChartTestCase(test.TestCase):
         self.assertIsInstance(chart, charts.HistogramChart)
         [chart.add_iteration({"atomic_actions": a})
          for a in ({"foo": 1.6, "bar": 3.1}, {"foo": 2.8}, {"bar": 5.5})]
-        expected = [
-            [{"disabled": 0, "key": "foo", "view": "Square Root Choice",
-              "values": [{"x": 2.2, "y": 2}, {"x": 2.8, "y": 1}]},
-             {"disabled": 0, "key": "foo", "view": "Sturges Formula",
-              "values": [{"x": 2.0, "y": 2}, {"x": 2.4, "y": 0},
-                         {"x": 2.8, "y": 1}]},
-             {"disabled": 0, "key": "foo", "view": "Rice Rule",
-              "values": [{"x": 2.0, "y": 2}, {"x": 2.4, "y": 0},
-                         {"x": 2.8, "y": 1}]},
-             {"disabled": 0, "key": "foo", "view": "One Half",
-              "values": [{"x": 2.2, "y": 2}, {"x": 2.8, "y": 1}]}],
-            [{"disabled": 1, "key": "bar", "view": "Square Root Choice",
-              "values": [{"x": 4.3, "y": 2}, {"x": 5.5, "y": 1}]},
-             {"disabled": 1, "key": "bar", "view": "Sturges Formula",
-              "values": [{"x": 3.9, "y": 2}, {"x": 4.7, "y": 0},
-                         {"x": 5.5, "y": 1}]},
-             {"disabled": 1, "key": "bar", "view": "Rice Rule",
-              "values": [{"x": 3.9, "y": 2}, {"x": 4.7, "y": 0},
-                         {"x": 5.5, "y": 1}]},
-             {"disabled": 1, "key": "bar", "view": "One Half",
-              "values": [{"x": 4.3, "y": 2}, {"x": 5.5, "y": 1}]}]]
+        expected = {
+            "data": [
+                [{"disabled": 0, "key": "foo", "view": "Square Root Choice",
+                  "values": [{"x": 2.2, "y": 2}, {"x": 2.8, "y": 1}]},
+                 {"disabled": 1, "key": "bar", "view": "Square Root Choice",
+                  "values": [{"x": 4.3, "y": 2}, {"x": 5.5, "y": 1}]}],
+                [{"disabled": 0, "key": "foo", "view": "Sturges Formula",
+                  "values": [{"x": 2.0, "y": 2}, {"x": 2.4, "y": 0},
+                             {"x": 2.8, "y": 1}]},
+                 {"disabled": 1, "key": "bar", "view": "Sturges Formula",
+                  "values": [{"x": 3.9, "y": 2}, {"x": 4.7, "y": 0},
+                             {"x": 5.5, "y": 1}]}],
+                [{"disabled": 0, "key": "foo", "view": "Rice Rule",
+                  "values": [{"x": 2.0, "y": 2}, {"x": 2.4, "y": 0},
+                             {"x": 2.8, "y": 1}]},
+                 {"disabled": 1, "key": "bar", "view": "Rice Rule",
+                  "values": [{"x": 3.9, "y": 2}, {"x": 4.7, "y": 0},
+                             {"x": 5.5, "y": 1}]}]],
+            "views": [{"id": 0, "name": "Square Root Choice"},
+                      {"id": 1, "name": "Sturges Formula"},
+                      {"id": 2, "name": "Rice Rule"}]}
         self.assertEqual(expected, chart.render())
+
+
+class TableTestCase(test.TestCase):
+
+    class Table(charts.Table):
+        columns = ["Name", "Min", "Max", "Max rounded by 2"]
+
+        def __init__(self, *args, **kwargs):
+            super(TableTestCase.Table, self).__init__(*args, **kwargs)
+            for name in "foo", "bar":
+                self._data[name] = [
+                    [charts.streaming.MinComputation(), None],
+                    [charts.streaming.MaxComputation(), None],
+                    [charts.streaming.MaxComputation(),
+                     lambda st, has_result: round(st.result(), 2)
+                     if has_result else "n/a"]]
+
+        def _map_iteration_values(self, iteration):
+            return iteration
+
+        def add_iteration(self, iteration):
+            for name, value in self._map_iteration_values(iteration).items():
+                for i, dummy in enumerate(self._data[name]):
+                    self._data[name][i][0].add(value)
+
+    def test___init__(self):
+        self.assertRaises(TypeError, charts.Table, {"iterations_count": 42})
+
+    def test__round(self):
+        table = self.Table({"iterations_count": 4})
+        streaming_ins = mock.Mock()
+        streaming_ins.result.return_value = 42.424242
+        self.assertRaises(TypeError, table._round, streaming_ins)
+        self.assertEqual("n/a", table._round(streaming_ins, False))
+        self.assertEqual(round(42.424242, 3),
+                         table._round(streaming_ins, True))
+
+    def test__row_has_results_and_get_rows(self):
+        table = self.Table({"iterations_count": 3})
+        self.assertFalse(table._row_has_results(table._data["foo"]))
+        self.assertFalse(table._row_has_results(table._data["bar"]))
+        self.assertEqual(
+            [["foo", "n/a", "n/a", "n/a"], ["bar", "n/a", "n/a", "n/a"]],
+            table.get_rows())
+        for i in range(3):
+            table.add_iteration({"foo": i + 1.2, "bar": i + 3.456})
+        self.assertTrue(table._row_has_results(table._data["foo"]))
+        self.assertTrue(table._row_has_results(table._data["bar"]))
+        self.assertEqual(
+            [["foo", 1.2, 3.2, 3.2], ["bar", 3.456, 5.456, 5.46]],
+            table.get_rows())
+
+    def test_render(self):
+        table = self.Table({"iterations_count": 42})
+        table.get_rows = lambda: "rows data"
+        self.assertEqual({"cols": ["Name", "Min", "Max", "Max rounded by 2"],
+                          "rows": "rows data"},
+                         table.render())
 
 
 MAIN_STATS_TABLE_COLUMNS = ["Action", "Min (sec)", "Median (sec)",
@@ -383,9 +426,9 @@ class MainStatsTableTestCase(test.TestCase):
             "expected": {
                 "cols": MAIN_STATS_TABLE_COLUMNS,
                 "rows": [
-                    ["foo", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "0.0%",
+                    ["foo", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a",
                      2],
-                    ["total", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "0.0%",
+                    ["total", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a",
                      2],
                 ]
             }
@@ -423,6 +466,20 @@ class MainStatsTableTestCase(test.TestCase):
                     ["total", 10.0, 20.0, 28.0, 29.0, 30.0, 20.0, "75.0%", 4]
                 ]
             }
+        },
+        {
+            "info": {
+                "iterations_count": 0,
+                "atomic": costilius.OrderedDict()
+            },
+            "data": [],
+            "expected": {
+                "cols": MAIN_STATS_TABLE_COLUMNS,
+                "rows": [
+                    ["total", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a", "n/a",
+                     0]
+                ]
+            }
         }
     )
     @ddt.unpack
@@ -433,3 +490,108 @@ class MainStatsTableTestCase(test.TestCase):
             table.add_iteration(el)
 
         self.assertEqual(expected, table.render())
+
+
+class OutputChartTestCase(test.TestCase):
+
+    class OutputChart(charts.OutputChart):
+        widget = "FooWidget"
+
+    def test___init__(self):
+        self.assertRaises(TypeError,
+                          charts.OutputChart, {"iterations_count": 42})
+
+        chart = self.OutputChart({"iterations_count": 42})
+        self.assertIsInstance(chart, charts.Chart)
+
+    def test__map_iteration_values(self):
+        chart = self.OutputChart({"iterations_count": 42})
+        self.assertEqual("foo data", chart._map_iteration_values("foo data"))
+
+    def test_render(self):
+        chart = self.OutputChart({"iterations_count": 42})
+        self.assertEqual(
+            {"widget": "FooWidget", "data": [],
+             "title": "", "description": ""},
+            chart.render())
+
+        chart = self.OutputChart({"iterations_count": 42},
+                                 title="foo title", description="Test!")
+        self.assertEqual(
+            {"widget": "FooWidget", "data": [],
+             "title": "foo title", "description": "Test!"},
+            chart.render())
+
+
+class OutputStackedAreaChartTestCase(test.TestCase):
+
+    def test___init__(self):
+        self.assertEqual("StackedArea", charts.OutputStackedAreaChart.widget)
+
+        chart = charts.OutputStackedAreaChart({"iterations_count": 42})
+        self.assertIsInstance(chart, charts.OutputChart)
+
+
+class OutputAvgChartTestCase(test.TestCase):
+
+    def test___init__(self):
+        self.assertEqual("Pie", charts.OutputAvgChart.widget)
+
+        chart = charts.OutputAvgChart({"iterations_count": 42})
+        self.assertIsInstance(chart, charts.OutputChart)
+        self.assertIsInstance(chart, charts.AvgChart)
+
+
+class OutputTableTestCase(test.TestCase):
+
+    class OutputTable(charts.OutputTable):
+
+        columns = []
+
+        def add_iteration(self, iteration):
+            pass
+
+    def test___init__(self):
+        self.assertEqual("Table", charts.OutputTable.widget)
+        self.assertRaises(TypeError,
+                          charts.OutputTable, {"iterations_count": 42})
+        self.OutputTable({"iterations_count": 42})
+
+
+@ddt.ddt
+class OutputStatsTableTestCase(test.TestCase):
+
+    def test___init__(self):
+        self.assertEqual("Table", charts.OutputStatsTable.widget)
+        self.assertEqual(
+            ["Action", "Min (sec)", "Median (sec)", "90%ile (sec)",
+             "95%ile (sec)", "Max (sec)", "Avg (sec)", "Count"],
+            charts.OutputStatsTable.columns)
+
+        table = charts.OutputStatsTable({"iterations_count": 42})
+        self.assertIsInstance(table, charts.Table)
+
+    @ddt.data(
+        {"title": "Foo title",
+         "description": "",
+         "iterations": [],
+         "expected": []},
+        {"title": "Foo title",
+         "description": "Test description!",
+         "iterations": [[("a", 11), ("b", 22)], [("a", 5.6), ("b", 7.8)],
+                        [("a", 42), ("b", 24)]],
+         "expected": [["a", 5.6, 11.0, 35.8, 38.9, 42.0, 10.267, 3],
+                      ["b", 7.8, 22.0, 23.6, 23.8, 24.0, 9.467, 3]]})
+    @ddt.unpack
+    def test_add_iteration_and_render(self, title, description, iterations,
+                                      expected):
+        table = charts.OutputStatsTable({"iterations_count": len(iterations)},
+                                        title=title, description=description)
+        for iteration in iterations:
+            table.add_iteration(iteration)
+        self.assertEqual({"title": title,
+                          "description": description,
+                          "widget": "Table",
+                          "data": {"cols": charts.OutputStatsTable.columns,
+                                   "rows": expected}},
+                         table.render())

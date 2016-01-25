@@ -14,6 +14,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+import ddt
 import mock
 
 from rally.plugins.openstack.scenarios.designate import utils
@@ -22,40 +23,35 @@ from tests.unit import test
 DESIGNATE_UTILS = "rally.plugins.openstack.scenarios.designate.utils."
 
 
+@ddt.ddt
 class DesignateScenarioTestCase(test.ScenarioTestCase):
 
     def setUp(self):
         super(DesignateScenarioTestCase, self).setUp()
         self.domain = mock.Mock()
+        self.zone = mock.Mock()
         self.server = mock.Mock()
 
-    @mock.patch("rally.common.utils.generate_random_name")
-    def test_create_domain(self, mock_generate_random_name):
-        scenario = utils.DesignateScenario()
+        self.client = self.clients("designate", version="2")
 
+    @ddt.data(
+        {},
+        {"email": "root@zone.name"})
+    def test_create_domain(self, domain_data):
         random_name = "foo"
-        explicit_name = "bar.io."
-        email = "root@zone.name"
-
-        mock_generate_random_name.return_value = random_name
         scenario = utils.DesignateScenario(context=self.context)
+        scenario.generate_random_name = mock.Mock(return_value=random_name)
         self.clients("designate").domains.create.return_value = self.domain
+        expected = {"email": "root@random.name"}
+        expected.update(domain_data)
+        expected["name"] = "%s.name." % random_name
 
-        # Check that the defaults / randoms are used if nothing is specified
-        domain = scenario._create_domain()
+        domain = scenario._create_domain(domain_data)
         self.clients("designate").domains.create.assert_called_once_with(
-            {"email": "root@random.name", "name": "%s.name." % random_name})
+            expected)
         self.assertEqual(self.domain, domain)
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "designate.create_domain")
-
-        self.clients("designate").domains.create.reset_mock()
-
-        # Check that when specifying zone defaults are not used...
-        data = {"email": email, "name": explicit_name}
-        domain = scenario._create_domain(data)
-        self.clients("designate").domains.create.assert_called_once_with(data)
-        self.assertEqual(self.domain, domain)
 
     def test_list_domains(self):
         scenario = utils.DesignateScenario(context=self.context)
@@ -73,35 +69,38 @@ class DesignateScenarioTestCase(test.ScenarioTestCase):
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "designate.delete_domain")
 
-    @mock.patch("rally.common.utils.generate_random_name")
-    def test_create_record(self, mock_generate_random_name):
-        scenario = utils.DesignateScenario()
+    def test_update_domain(self):
+        scenario = utils.DesignateScenario(context=self.context)
+        domain = scenario._create_domain()
+        self.clients("designate").domains.update.return_value = self.domain
+        updated_domain = scenario._update_domain(domain)
+        self.clients("designate").domains.update.assert_called_once_with(
+            domain)
+        self.assertEqual(self.domain, updated_domain)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "designate.update_domain")
 
+    @ddt.data(
+        {},
+        {"data": "127.0.0.1"})
+    def test_create_record(self, record_data):
         random_name = "foo"
         domain_name = "zone.name."
-        random_record_name = "%s.%s" % (random_name, domain_name)
-
-        mock_generate_random_name.return_value = random_name
-        scenario = utils.DesignateScenario(context=self.context)
-
         domain = {"name": domain_name, "id": "123"}
+        record_name = "%s.%s" % (random_name, domain_name)
 
-        # Create with randoms (name and type)
-        scenario._create_record(domain)
+        scenario = utils.DesignateScenario(context=self.context)
+        scenario.generate_random_name = mock.Mock(return_value=random_name)
+
+        expected = {"type": "A", "data": "10.0.0.1"}
+        expected.update(record_data)
+        expected["name"] = record_name
+
+        scenario._create_record(domain, record=record_data)
         self.clients("designate").records.create.assert_called_once_with(
-            domain["id"],
-            {"name": random_record_name, "type": "A", "data": "10.0.0.1"})
-
+            domain["id"], expected)
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "designate.create_record")
-
-        self.clients("designate").records.create.reset_mock()
-
-        # Specify name
-        record = {"name": "www.zone.name.", "type": "ASD"}
-        scenario._create_record(domain, record)
-        self.clients("designate").records.create.assert_called_once_with(
-            domain["id"], record)
 
     def test_list_records(self):
         scenario = utils.DesignateScenario(context=self.context)
@@ -127,14 +126,13 @@ class DesignateScenarioTestCase(test.ScenarioTestCase):
         self.clients("designate").records.delete.assert_called_once_with(
             domain_id, record_id)
 
-    @mock.patch("rally.common.utils.generate_random_name")
-    def test_create_server(self, mock_generate_random_name):
+    def test_create_server(self):
         scenario = utils.DesignateScenario(context=self.context)
-
         random_name = "foo"
+        scenario.generate_random_name = mock.Mock(return_value=random_name)
+
         explicit_name = "bar.io."
 
-        mock_generate_random_name.return_value = random_name
         self.admin_clients(
             "designate").servers.create.return_value = self.server
 
@@ -163,3 +161,63 @@ class DesignateScenarioTestCase(test.ScenarioTestCase):
             "foo_id")
         self._test_atomic_action_timer(scenario.atomic_actions(),
                                        "designate.delete_server")
+
+    # NOTE: API V2
+    @ddt.data(
+        {},
+        {"email": "root@zone.name"},
+        {"name": "example.name."},
+        {
+            "email": "root@zone.name",
+            "name": "example.name."
+        })
+    def test_create_zone(self, zone_data):
+        scenario = utils.DesignateScenario()
+
+        random_name = "foo"
+
+        scenario = utils.DesignateScenario(context=self.context)
+        scenario.generate_random_name = mock.Mock(return_value=random_name)
+        self.client.zones.create.return_value = self.zone
+
+        expected = {
+            "email": "root@random.name",
+            "name": "%s.name." % random_name,
+            "type_": "PRIMARY"
+        }
+        expected.update(zone_data)
+
+        # Check that the defaults / randoms are used if nothing is specified
+        zone = scenario._create_zone(**zone_data)
+        self.client.zones.create.assert_called_once_with(
+            description=None,
+            ttl=None,
+            **expected)
+        self.assertEqual(self.zone, zone)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "designate.create_zone")
+
+    def test_list_zones(self):
+        scenario = utils.DesignateScenario(context=self.context)
+        return_zones_list = scenario._list_zones()
+        self.assertEqual(self.client.zones.list.return_value,
+                         return_zones_list)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "designate.list_zones")
+
+    def test_delete_zone(self):
+        scenario = utils.DesignateScenario(context=self.context)
+
+        zone = scenario._create_zone()
+        scenario._delete_zone(zone["id"])
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "designate.delete_zone")
+
+    def test_list_recordsets(self):
+        scenario = utils.DesignateScenario(context=self.context)
+        return_recordsets_list = scenario._list_recordsets("123")
+        self.assertEqual(
+            self.client.recordsets.list.return_value,
+            return_recordsets_list)
+        self._test_atomic_action_timer(scenario.atomic_actions(),
+                                       "designate.list_recordsets")

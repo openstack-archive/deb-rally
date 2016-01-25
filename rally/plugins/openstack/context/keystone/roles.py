@@ -14,8 +14,7 @@
 #    under the License.
 
 from rally.common.i18n import _
-from rally.common import log as logging
-from rally.common import utils as rutils
+from rally.common import logging
 from rally import consts
 from rally import exceptions
 from rally import osclients
@@ -40,15 +39,15 @@ class RoleGenerator(context.Context):
 
     def __init__(self, ctx):
         super(RoleGenerator, self).__init__(ctx)
-        self.endpoint = self.context["admin"]["endpoint"]
+        self.credential = self.context["admin"]["credential"]
 
-    def _add_role(self, admin_endpoint, context_role):
+    def _add_role(self, admin_credential, context_role):
         """Add role to users.
 
-        :param admin_endpoint: The base url.
+        :param admin_credential: The admin credential.
         :param context_role: name of existing role.
         """
-        client = keystone.wrap(osclients.Clients(admin_endpoint).keystone())
+        client = keystone.wrap(osclients.Clients(admin_credential).keystone())
         default_roles = client.list_roles()
         for def_role in default_roles:
             if str(def_role.name) == context_role:
@@ -64,13 +63,13 @@ class RoleGenerator(context.Context):
 
         return {"id": str(role.id), "name": str(role.name)}
 
-    def _remove_role(self, admin_endpoint, role):
+    def _remove_role(self, admin_credential, role):
         """Remove given role from users.
 
-        :param admin_endpoint: The base url.
+        :param admin_credential: The admin credential.
         :param role: dictionary with role parameters (id, name).
         """
-        client = keystone.wrap(osclients.Clients(admin_endpoint).keystone())
+        client = keystone.wrap(osclients.Clients(admin_credential).keystone())
 
         for user in self.context["users"]:
             with logging.ExceptionLogger(
@@ -79,14 +78,14 @@ class RoleGenerator(context.Context):
                     user_id=user["id"], role_id=role["id"],
                     project_id=user["tenant_id"])
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `roles`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `roles`"))
     def setup(self):
         """Add roles to all users."""
-        self.context["roles"] = [self._add_role(self.endpoint, name)
+        self.context["roles"] = [self._add_role(self.credential, name)
                                  for name in self.config]
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `roles`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `roles`"))
     def cleanup(self):
         """Remove roles from users."""
         for role in self.context["roles"]:
-            self._remove_role(self.endpoint, role)
+            self._remove_role(self.credential, role)

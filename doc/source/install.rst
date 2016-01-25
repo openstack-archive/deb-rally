@@ -107,13 +107,15 @@ It is also possible to install Rally with DevStack. First, clone the correspondi
    git clone https://git.openstack.org/openstack-dev/devstack
    git clone https://github.com/openstack/rally
 
-Then, configure DevStack to run Rally:
+Then, configure DevStack to run Rally. First, create your ``local.conf`` file:
 
 .. code-block:: bash
 
    cd devstack
    cp samples/local.conf local.conf
-   echo "enable_plugin rally https://github.com/openstack/rally master" >> localrc
+
+Next, edit local.conf:
+add ``enable_plugin rally https://github.com/openstack/rally master`` to ``[[local|localrc]]`` section.
 
 Finally, run DevStack as usually:
 
@@ -160,7 +162,8 @@ be done by the following steps:
    likely to work if your home directory has excessively open
    permissions (e.g., ``0755``), which is not recommended.
 
-You may want to save the last command as an alias:
+All task samples, docs and certification tasks you could find at /opt/rally/.
+Also you may want to save the last command as an alias:
 
 .. code-block:: bash
 

@@ -5,8 +5,7 @@
 #    not use this file except in compliance with the License. You may obtain
 #    a copy of the License at
 #
-#         http://www.apache.org/licenses/LICENSE-2.0
-#
+#         http://www.apache.org/licenses/LICENSE-2.0#
 #    Unless required by applicable law or agreed to in writing, software
 #    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
@@ -16,12 +15,14 @@
 from __future__ import print_function
 import string
 import sys
+import threading
 import time
 
+import ddt
 import mock
+from six.moves import queue as Queue
 import testtools
 
-from rally.common.i18n import _
 from rally.common import utils
 from rally import exceptions
 from tests.unit import test
@@ -115,73 +116,6 @@ class TimerTestCase(test.TestCase):
         self.assertEqual(timer.error[0], type(Exception()))
 
 
-class LogTestCase(test.TestCase):
-
-    def test_log_task_wrapper(self):
-        mock_log = mock.MagicMock()
-        msg = "test %(a)s %(b)s"
-
-        class TaskLog(object):
-
-            def __init__(self):
-                self.task = {"uuid": "some_uuid"}
-
-            @utils.log_task_wrapper(mock_log, msg, a=10, b=20)
-            def some_method(self, x, y):
-                return x + y
-
-        t = TaskLog()
-        self.assertEqual(t.some_method.__name__, "some_method")
-        self.assertEqual(t.some_method(2, 2), 4)
-        params = {"msg": msg % {"a": 10, "b": 20}, "uuid": t.task["uuid"]}
-        expected = [
-            mock.call(_("Task %(uuid)s | Starting:  %(msg)s") % params),
-            mock.call(_("Task %(uuid)s | Completed: %(msg)s") % params)
-        ]
-        self.assertEqual(mock_log.mock_calls, expected)
-
-    def test_log_deprecated(self):
-        mock_log = mock.MagicMock()
-
-        @utils.log_deprecated("Deprecated test", "0.0.1", mock_log)
-        def some_method(x, y):
-            return x + y
-
-        self.assertEqual(some_method(2, 2), 4)
-        mock_log.assert_called_once_with("Deprecated test "
-                                         "(deprecated in Rally v0.0.1)")
-
-    def test_log_deprecated_args(self):
-        mock_log = mock.MagicMock()
-
-        @utils.log_deprecated_args("Deprecated test", "0.0.1", ("z",),
-                                   mock_log, once=True)
-        def some_method(x, y, z):
-            return x + y + z
-
-        self.assertEqual(some_method(2, 2, z=3), 7)
-        mock_log.assert_called_once_with(
-            "Deprecated test (args `z' deprecated in Rally v0.0.1)")
-
-        mock_log.reset_mock()
-        self.assertEqual(some_method(2, 2, z=3), 7)
-        self.assertFalse(mock_log.called)
-
-        @utils.log_deprecated_args("Deprecated test", "0.0.1", ("z",),
-                                   mock_log, once=False)
-        def some_method(x, y, z):
-            return x + y + z
-
-        self.assertEqual(some_method(2, 2, z=3), 7)
-        mock_log.assert_called_once_with(
-            "Deprecated test (args `z' deprecated in Rally v0.0.1)")
-
-        mock_log.reset_mock()
-        self.assertEqual(some_method(2, 2, z=3), 7)
-        mock_log.assert_called_once_with(
-            "Deprecated test (args `z' deprecated in Rally v0.0.1)")
-
-
 def module_level_method():
     pass
 
@@ -257,98 +191,274 @@ class TenantIteratorTestCase(test.TestCase):
 
 class RAMIntTestCase(test.TestCase):
 
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test__init__(self, mock_multiprocessing):
-        utils.RAMInt()
-        mock_multiprocessing.Lock.assert_called_once_with()
-        mock_multiprocessing.Value.assert_called_once_with("I", 0)
+    def test__int__(self):
+        self.assertEqual(0, int(utils.RAMInt()))
+        self.assertEqual(10, int(utils.RAMInt(10)))
 
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test__int__(self, mock_multiprocessing):
-        mock_multiprocessing.Value.return_value = mock.Mock(value=42)
-        self.assertEqual(int(utils.RAMInt()), 42)
+    def test__str__(self):
+        self.assertEqual("0", str(utils.RAMInt()))
+        self.assertEqual("20", str(utils.RAMInt(20)))
 
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test__str__(self, mock_multiprocessing):
-        mock_multiprocessing.Value.return_value = mock.Mock(value=42)
-        self.assertEqual(str(utils.RAMInt()), "42")
+    def test__next__(self):
+        ri = utils.RAMInt()
+        for i in range(0, 3):
+            self.assertEqual(i, next(ri))
 
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test__iter__(self, mock_multiprocessing):
-        ram_int = utils.RAMInt()
-        self.assertEqual(iter(ram_int), ram_int)
+    def test_next(self):
+        ri = utils.RAMInt()
+        for i in range(0, 3):
+            self.assertEqual(i, ri.next())
 
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test__next__(self, mock_multiprocessing):
-        class MemInt(int):
-            THRESHOLD = 5
-
-            def __iadd__(self, i):
-                return MemInt((int(self) + i) % self.THRESHOLD)
-
-        mock_lock = mock.MagicMock()
-        mock_multiprocessing.Lock.return_value = mock_lock
-        mock_multiprocessing.Value.return_value = mock.Mock(value=MemInt(0))
-
-        ram_int = utils.RAMInt()
-        self.assertEqual(int(ram_int), 0)
-        for i in range(MemInt.THRESHOLD - 1):
-            self.assertEqual(ram_int.__next__(), i)
-        self.assertRaises(StopIteration, ram_int.__next__)
-        self.assertEqual(mock_lock.__enter__.mock_calls,
-                         [mock.call()] * MemInt.THRESHOLD)
-        self.assertEqual(len(mock_lock.__exit__.mock_calls), MemInt.THRESHOLD)
-
-    @mock.patch("rally.common.utils.RAMInt.__next__",
-                return_value="next_value")
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test_next(self, mock_multiprocessing, mock_ram_int___next__):
-        self.assertEqual(next(utils.RAMInt()), "next_value")
-        mock_ram_int___next__.assert_called_once_with()
-
-    @mock.patch("rally.common.utils.multiprocessing")
-    def test_reset(self, mock_multiprocessing):
-        ram_int = utils.RAMInt()
-        self.assertRaises(TypeError, int, ram_int)
-        ram_int.reset()
-        self.assertEqual(int(ram_int), 0)
+    def test_reset(self):
+        ri = utils.RAMInt()
+        ri.next()
+        ri.reset()
+        self.assertEqual(0, int(ri))
 
 
-class GenerateRandomTestCase(test.TestCase):
+@ddt.ddt
+class RandomNameTestCase(test.TestCase):
 
-    @mock.patch("rally.common.utils.random")
-    def test_generate_random_name(self, mock_random):
-        choice = "foobarspamchoicestring"
+    @ddt.data(
+        {},
+        {"task_id": "fake-task"},
+        {"task_id": "2short", "expected": "s_rally_blargles_dweebled"},
+        {"task_id": "fake!task",
+         "expected": "s_rally_blargles_dweebled"},
+        {"fmt": "XXXX-test-XXX-test",
+         "expected": "fake-test-bla-test"})
+    @ddt.unpack
+    @mock.patch("random.choice")
+    def test_generate_random_name(self, mock_choice, task_id="faketask",
+                                  expected="s_rally_faketask_blargles",
+                                  fmt="s_rally_XXXXXXXX_XXXXXXXX"):
+        class FakeNameGenerator(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = fmt
+            task = {"uuid": task_id}
 
-        idx = iter(range(100))
-        mock_random.choice.side_effect = lambda choice: choice[next(idx)]
-        self.assertEqual(utils.generate_random_name(),
-                         string.ascii_lowercase[:16])
+        generator = FakeNameGenerator()
 
-        idx = iter(range(100))
-        mock_random.choice.side_effect = lambda choice: choice[next(idx)]
-        self.assertEqual(utils.generate_random_name(length=10),
-                         string.ascii_lowercase[:10])
+        mock_choice.side_effect = iter("blarglesdweebled")
+        self.assertEqual(generator.generate_random_name(), expected)
 
-        idx = iter(range(100))
-        mock_random.choice.side_effect = lambda choice: choice[next(idx)]
-        self.assertEqual(utils.generate_random_name(choice=choice),
-                         choice[:16])
+        class FakeNameGenerator(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = fmt
+            verification = {"uuid": task_id}
 
-        idx = iter(range(100))
-        mock_random.choice.side_effect = lambda choice: choice[next(idx)]
-        self.assertEqual(utils.generate_random_name(choice=choice, length=5),
-                         choice[:5])
+        generator = FakeNameGenerator()
 
-        idx = iter(range(100))
-        mock_random.choice.side_effect = lambda choice: choice[next(idx)]
-        self.assertEqual(
-            utils.generate_random_name(prefix="foo_", length=10),
-            "foo_" + string.ascii_lowercase[:10])
+        mock_choice.side_effect = iter("blarglesdweebled")
+        self.assertEqual(generator.generate_random_name(), expected)
 
-        idx = iter(range(100))
-        mock_random.choice.side_effect = lambda choice: choice[next(idx)]
-        self.assertEqual(
-            utils.generate_random_name(prefix="foo_",
-                                       choice=choice, length=10),
-            "foo_" + choice[:10])
+    def test_generate_random_name_bogus_name_format(self):
+        class FakeNameGenerator(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = "invalid_XXX_format"
+            task = {"uuid": "fake-task-id"}
+
+        generator = FakeNameGenerator()
+        self.assertRaises(ValueError,
+                          generator.generate_random_name)
+
+    @ddt.data(
+        {"good": ("rally_abcdefgh_abcdefgh", "rally_12345678_abcdefgh",
+                  "rally_ABCdef12_ABCdef12"),
+         "bad": ("rally_abcd_efgh", "rally_abcd!efg_12345678",
+                 "rally_", "rally__", "rally_abcdefgh_",
+                 "rally_abcdefghi_12345678", "foo", "foo_abcdefgh_abcdefgh")},
+        {"fmt": "][*_XXX_XXX",
+         "chars": "abc(.*)",
+         "good": ("][*_abc_abc", "][*_abc_((("),
+         "bad": ("rally_ab_cd", "rally_ab!_abc", "rally_", "rally__",
+                 "rally_abc_", "rally_abcd_abc", "foo", "foo_abc_abc")},
+        {"fmt": "XXXX-test-XXX-test",
+         "good": ("abcd-test-abc-test",),
+         "bad": ("rally-abcdefgh-abcdefgh", "abc-test-abc-test",
+                 "abcd_test_abc_test", "abc-test-abcd-test")})
+    @ddt.unpack
+    def test_name_matches_pattern(self, good=(), bad=(),
+                                  fmt="rally_XXXXXXXX_XXXXXXXX",
+                                  chars=string.ascii_letters + string.digits):
+        for name in good:
+            self.assertTrue(
+                utils.name_matches_pattern(name, fmt, chars),
+                "%s unexpectedly didn't match resource_name_format" % name)
+
+        for name in bad:
+            self.assertFalse(
+                utils.name_matches_pattern(name, fmt, chars),
+                "%s unexpectedly matched resource_name_format" % name)
+
+    @mock.patch("rally.common.utils.name_matches_pattern",
+                return_value=True)
+    def test_name_matches_object(self, mock_name_matches_pattern):
+        name = "foo"
+        self.assertTrue(
+            utils.name_matches_object(name, utils.RandomNameGeneratorMixin))
+        mock_name_matches_pattern.assert_called_once_with(
+            name,
+            utils.RandomNameGeneratorMixin.RESOURCE_NAME_FORMAT,
+            utils.RandomNameGeneratorMixin.RESOURCE_NAME_ALLOWED_CHARACTERS)
+
+    @mock.patch("rally.common.utils.name_matches_pattern",
+                return_value=False)
+    def test_name_matches_object_identical_list(self,
+                                                mock_name_matches_pattern):
+        class One(utils.RandomNameGeneratorMixin):
+            pass
+
+        class Two(utils.RandomNameGeneratorMixin):
+            pass
+
+        name = "foo"
+        self.assertFalse(utils.name_matches_object(name, One, Two))
+        mock_name_matches_pattern.assert_called_once_with(
+            name,
+            One.RESOURCE_NAME_FORMAT,
+            One.RESOURCE_NAME_ALLOWED_CHARACTERS)
+
+    @mock.patch("rally.common.utils.name_matches_pattern",
+                return_value=False)
+    def test_name_matches_object_differing_list(self,
+                                                mock_name_matches_pattern):
+        class One(utils.RandomNameGeneratorMixin):
+            pass
+
+        class Two(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = "foo_XXX_XXX"
+
+        class Three(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_ALLOWED_CHARACTERS = "12345"
+
+        class Four(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = "bar_XXX_XXX"
+            RESOURCE_NAME_ALLOWED_CHARACTERS = "abcdef"
+
+        classes = (One, Two, Three, Four)
+        name = "foo"
+        self.assertFalse(utils.name_matches_object(name, *classes))
+        calls = [mock.call(name, cls.RESOURCE_NAME_FORMAT,
+                           cls.RESOURCE_NAME_ALLOWED_CHARACTERS)
+                 for cls in classes]
+        mock_name_matches_pattern.assert_has_calls(calls, any_order=True)
+
+    def test_name_matches_pattern_identity(self):
+        generator = utils.RandomNameGeneratorMixin()
+        generator.task = {"uuid": "faketask"}
+
+        self.assertTrue(utils.name_matches_pattern(
+            generator.generate_random_name(),
+            generator.RESOURCE_NAME_FORMAT,
+            generator.RESOURCE_NAME_ALLOWED_CHARACTERS))
+
+    def test_name_matches_object_identity(self):
+        generator = utils.RandomNameGeneratorMixin()
+        generator.task = {"uuid": "faketask"}
+
+        self.assertTrue(utils.name_matches_object(
+            generator.generate_random_name(), generator))
+        self.assertTrue(utils.name_matches_object(
+            generator.generate_random_name(), utils.RandomNameGeneratorMixin))
+
+    def test_consistent_task_id_part(self):
+        class FakeNameGenerator(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = "XXXXXXXX_XXXXXXXX"
+
+        generator = FakeNameGenerator()
+        generator.task = {"uuid": "good-task-id"}
+
+        names = [generator.generate_random_name() for i in range(100)]
+        task_id_parts = set([n.split("_")[0] for n in names])
+        self.assertEqual(len(task_id_parts), 1)
+
+        generator.task = {"uuid": "bogus! task! id!"}
+
+        names = [generator.generate_random_name() for i in range(100)]
+        task_id_parts = set([n.split("_")[0] for n in names])
+        self.assertEqual(len(task_id_parts), 1)
+
+
+@ddt.ddt
+class MergeTestCase(test.TestCase):
+    @ddt.data(
+        # regular data
+        {"sources": [[[1, 3, 5], [5, 7, 9, 14], [17, 21, 36, 41]],
+                     [[2, 2, 4], [9, 10], [16, 19, 23, 26, 91]],
+                     [[5], [5, 7, 11, 14, 14, 19, 23]]],
+         "expected_output": [[1, 2, 2, 3, 4, 5, 5, 5, 5, 7],
+                             [7, 9, 9, 10, 11, 14, 14, 14, 16, 17],
+                             [19, 19, 21, 23, 23, 26, 36, 41, 91]]},
+        # with one empty source
+        {"sources": [[[1, 3, 5], [5, 7, 9, 14], [17, 21, 36, 41]],
+                     [[2, 2, 4], [9, 10], [16, 19, 23, 26, 91]],
+                     [[5], [5, 7, 11, 14, 14, 19, 23]],
+                     []],
+         "expected_output": [[1, 2, 2, 3, 4, 5, 5, 5, 5, 7],
+                             [7, 9, 9, 10, 11, 14, 14, 14, 16, 17],
+                             [19, 19, 21, 23, 23, 26, 36, 41, 91]]},
+        # with one source that produces an empty list
+        {"sources": [[[1, 3, 5], [5, 7, 9, 14], [17, 21, 36, 41]],
+                     [[2, 2, 4], [9, 10], [16, 19, 23, 26, 91]],
+                     [[5], [5, 7, 11, 14, 14, 19, 23]],
+                     [[]]],
+         "expected_output": [[1, 2, 2, 3, 4, 5, 5, 5, 5, 7],
+                             [7, 9, 9, 10, 11, 14, 14, 14, 16, 17],
+                             [19, 19, 21, 23, 23, 26, 36, 41, 91]]},
+        # with empty lists appered in sources
+        {"sources": [[[1, 3, 5], [], [], [5, 7, 9, 14], [17, 21, 36, 41]],
+                     [[], [2, 2, 4], [9, 10], [16, 19, 23, 26, 91]],
+                     [[5], [5, 7, 11, 14, 14, 19, 23], []]],
+         "expected_output": [[1, 2, 2, 3, 4, 5, 5, 5, 5, 7],
+                             [7, 9, 9, 10, 11, 14, 14, 14, 16, 17],
+                             [19, 19, 21, 23, 23, 26, 36, 41, 91]]},
+        # only one source
+        {"sources": [[[1, 3, 5], [5, 7, 9, 14], [17, 21, 36, 41]]],
+         "expected_output": [[1, 3, 5, 5, 7, 9, 14, 17, 21, 36], [41]]},
+        # no sources passed in
+        {"sources": [],
+         "expected_output": []},
+        # several sources, all empty
+        {"sources": [[], [], [], []],
+         "expected_output": []}
+
+    )
+    @ddt.unpack
+    def test_merge(self, sources, expected_output):
+        in_iters = [iter(src) for src in sources]
+
+        out = list(utils.merge(10, *in_iters))
+        self.assertEqual(out, expected_output)
+
+
+class TimeoutThreadTestCase(test.TestCase):
+    def test_timeout_thread(self):
+        """Create and kill thread by timeout.
+
+        This single test covers 3 methods: terminate_thread, timeout_thread,
+        and interruptable_sleep.
+
+        This test is more like integrated then unit, but it is much better
+        then unreadable 500 lines of mocking and checking.
+        """
+        queue = Queue.Queue()
+        killer_thread = threading.Thread(
+            target=utils.timeout_thread,
+            args=(queue,),
+        )
+        test_thread = threading.Thread(
+            target=utils.interruptable_sleep,
+            args=(30, 0.01),
+        )
+        test_thread.start()
+        start_time = time.time()
+        queue.put((test_thread.ident, start_time + 1))
+        killer_thread.start()
+        test_thread.join()
+        end_time = time.time()
+        queue.put((None, None))
+        killer_thread.join()
+        time_elapsed = end_time - start_time
+        # NOTE(sskripnick): Killing thread with PyThreadState_SetAsyncExc
+        # works with sinificant delay. Make sure this delay is less
+        # than 10 seconds.
+        self.assertTrue(time_elapsed < 11,
+                        "Thread killed too late (%s seconds)" % time_elapsed)

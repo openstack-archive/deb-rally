@@ -20,7 +20,8 @@ import time
 
 import jsonschema
 
-from rally.common import log as logging
+from rally.common import logging
+from rally.common import objects
 from rally.common.plugin import plugin
 from rally.common import utils as rutils
 from rally import consts
@@ -37,7 +38,7 @@ def format_result_on_timeout(exc, timeout):
     return {
         "duration": timeout,
         "idle_duration": 0,
-        "scenario_output": {"errors": "", "data": {}},
+        "output": {"additive": [], "complete": []},
         "atomic_actions": {},
         "error": utils.format_exc(exc)
     }
@@ -57,11 +58,30 @@ def _run_scenario_once(args):
     scenario_inst = cls(context_obj)
 
     error = []
-    scenario_output = {"errors": "", "data": {}}
+    output = {"additive": [], "complete": []}
     try:
         with rutils.Timer() as timer:
-            scenario_output = getattr(scenario_inst,
-                                      method_name)(**kwargs) or scenario_output
+            # NOTE(amaretskiy): Output as return value is deprecated
+            #     but supported for backward compatibility
+            deprecated_output = getattr(scenario_inst, method_name)(**kwargs)
+            warning = ""
+            if deprecated_output:
+                warning = ("Returning output data by scenario is deprecated "
+                           "in favor of calling add_output().")
+            if scenario_inst._output != {"complete": [], "additive": []}:
+                output = scenario_inst._output
+                if deprecated_output:
+                    warning += (" Output data both returned and passed to "
+                                "add_output() so returned one is ignored!")
+            elif deprecated_output:
+                output["additive"].append({
+                    "title": "Scenario output",
+                    "description": "",
+                    "chart_plugin": "StackedArea",
+                    "data": [list(item)
+                             for item in deprecated_output["data"].items()]})
+            if warning:
+                LOG.warning(warning)
     except Exception as e:
         error = utils.format_exc(e)
         if logging.is_debug():
@@ -76,7 +96,7 @@ def _run_scenario_once(args):
                 "timestamp": timer.timestamp(),
                 "idle_duration": scenario_inst.idle_duration(),
                 "error": error,
-                "scenario_output": scenario_output,
+                "output": output,
                 "atomic_actions": scenario_inst.atomic_actions()}
 
 
@@ -110,21 +130,7 @@ class ScenarioRunnerResult(dict):
             "idle_duration": {
                 "type": "number"
             },
-            "scenario_output": {
-                "type": "object",
-                "properties": {
-                    "data": {
-                        "type": "object",
-                        "patternProperties": {
-                            ".*": {"type": "number"}
-                        }
-                    },
-                    "errors": {
-                        "type": "string"
-                    },
-                },
-                "additionalProperties": False
-            },
+            "output": objects.task.OUTPUT_SCHEMA,
             "atomic_actions": {
                 "type": "object",
                 "patternProperties": {
@@ -163,7 +169,7 @@ class ScenarioRunner(plugin.Plugin):
 
     CONFIG_SCHEMA = {}
 
-    def __init__(self, task, config):
+    def __init__(self, task, config, batch_size=0):
         """Runner constructor.
 
         It sets task and config to local variables. Also initialize
@@ -177,6 +183,8 @@ class ScenarioRunner(plugin.Plugin):
         self.result_queue = collections.deque()
         self.aborted = multiprocessing.Event()
         self.run_duration = 0
+        self.batch_size = batch_size
+        self.result_batch = []
 
     @staticmethod
     def validate(config):
@@ -207,6 +215,7 @@ class ScenarioRunner(plugin.Plugin):
 
         with rutils.Timer() as timer:
             self._run_scenario(cls, method_name, context, args)
+
         self.run_duration = timer.duration()
         return self.run_duration
 
@@ -253,16 +262,32 @@ class ScenarioRunner(plugin.Plugin):
 
             while not result_queue.empty():
                 self._send_result(result_queue.get())
+
+        self._flush_results()
         result_queue.close()
 
+    def _flush_results(self):
+        if self.result_batch:
+            sorted_batch = sorted(self.result_batch)
+            self.result_queue.append(sorted_batch)
+            self.result_batch = []
+
     def _send_result(self, result):
-        """Send partial result to consumer.
+        """Store partial result to send it to consumer later.
 
         :param result: Result dict to be sent. It should match the
                        ScenarioRunnerResult schema, otherwise
                        ValidationError is raised.
         """
-        self.result_queue.append(ScenarioRunnerResult(result))
+
+        r = ScenarioRunnerResult(result)
+        self.result_batch.append(r)
+
+        if len(self.result_batch) >= self.batch_size:
+            sorted_batch = sorted(self.result_batch,
+                                  key=lambda r: r["timestamp"])
+            self.result_queue.append(sorted_batch)
+            self.result_batch = []
 
     def _log_debug_info(self, **info):
         """Log runner parameters for debugging.

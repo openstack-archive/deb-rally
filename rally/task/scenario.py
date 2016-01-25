@@ -15,11 +15,12 @@
 
 
 import random
-import time
 
+import jsonschema
 import six
 
-from rally.common import log as logging
+from rally.common import logging
+from rally.common.objects import task  # noqa
 from rally.common.plugin import plugin
 from rally.common import utils
 from rally import consts
@@ -93,26 +94,21 @@ class ConfigurePluginMeta(type):
 @six.add_metaclass(ConfigurePluginMeta)
 class Scenario(plugin.Plugin,
                atomic.ActionTimerMixin,
-               functional.FunctionalMixin):
+               functional.FunctionalMixin,
+               utils.RandomNameGeneratorMixin):
     """This is base class for any benchmark scenario.
 
        You should create subclass of this class. And your test scenarios will
        be auto discoverable and you will be able to specify it in test config.
     """
-    RESOURCE_NAME_PREFIX = "rally_"
-    RESOURCE_NAME_LENGTH = 10
+    RESOURCE_NAME_FORMAT = "s_rally_XXXXXXXX_XXXXXXXX"
 
     def __init__(self, context=None):
         super(Scenario, self).__init__()
-        self.context = context
+        self.context = context or {}
+        self.task = self.context.get("task", {})
         self._idle_duration = 0
-
-    # TODO(amaretskiy): consider about prefix part of benchmark uuid
-    @classmethod
-    def _generate_random_name(cls, prefix=None, length=None):
-        prefix = cls.RESOURCE_NAME_PREFIX if prefix is None else prefix
-        length = length or cls.RESOURCE_NAME_LENGTH
-        return utils.generate_random_name(prefix, length)
+        self._output = {"additive": [], "complete": []}
 
     @staticmethod
     def _validate_helper(validators, clients, config, deployment):
@@ -148,8 +144,8 @@ class Scenario(plugin.Plugin,
             for user in users:
                 cls._validate_helper(user_validators, user, config, deployment)
 
-    def sleep_between(self, min_sleep, max_sleep):
-        """Performs a time.sleep() call for a random amount of seconds.
+    def sleep_between(self, min_sleep, max_sleep, atomic_delay=0.1):
+        """Call an interruptable_sleep() for a random amount of seconds.
 
         The exact time is chosen uniformly randomly from the interval
         [min_sleep; max_sleep). The method also updates the idle_duration
@@ -157,15 +153,34 @@ class Scenario(plugin.Plugin,
 
         :param min_sleep: Minimum sleep time in seconds (non-negative)
         :param max_sleep: Maximum sleep time in seconds (non-negative)
+        :param atomic_delay: parameter with which  time.sleep would be called
+                             int(sleep_time / atomic_delay) times.
         """
         if not 0 <= min_sleep <= max_sleep:
             raise exceptions.InvalidArgumentsException(
                 "0 <= min_sleep <= max_sleep")
 
         sleep_time = random.uniform(min_sleep, max_sleep)
-        time.sleep(sleep_time)
+        utils.interruptable_sleep(sleep_time, atomic_delay)
         self._idle_duration += sleep_time
 
     def idle_duration(self):
         """Returns duration of all sleep_between."""
         return self._idle_duration
+
+    def add_output(self, additive=None, complete=None):
+        """Add iteration values for additive output.
+
+        :param additive: dict with additive output
+        :param complete: dict with complete output
+        :raises RallyException: When additive or complete has wrong format
+        """
+        for key, value in (("additive", additive), ("complete", complete)):
+            if value:
+                try:
+                    jsonschema.validate(
+                        value, task.OUTPUT_SCHEMA["properties"][key]["items"])
+                    self._output[key].append(value)
+                except jsonschema.ValidationError:
+                    raise exceptions.RallyException(
+                        "%s output has wrong format" % key.capitalize())

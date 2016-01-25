@@ -16,45 +16,6 @@
         failure_rate:
           max: 0
 
-  EC2Servers.boot_server:
-    -
-      args:
-        flavor:
-          name: "m1.tiny"
-        image:
-          name: {{image_name}}
-      runner:
-        type: "constant"
-        times: 2
-        concurrency: 2
-      context:
-        users:
-          tenants: 3
-          users_per_tenant: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  EC2Servers.list_servers:
-    -
-      runner:
-        type: "constant"
-        times: 3
-        concurrency: 3
-      context:
-        users:
-          tenants: 3
-          users_per_tenant: 1
-        ec2_servers:
-          flavor:
-            name: "m1.tiny"
-          image:
-            name: {{image_name}}
-          servers_per_tenant: 2
-      sla:
-        failure_rate:
-          max: 0
-
   Quotas.nova_update_and_delete:
     -
       args:
@@ -285,6 +246,44 @@
         failure_rate:
           max: 0
 
+  NovaServers.boot_and_show_server:
+    -
+      args:
+        image:
+          name: {{image_name}}
+        flavor:
+          name: "m1.tiny"
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  NovaServers.boot_and_get_console_output:
+    -
+      args:
+        image:
+          name: {{image_name}}
+        flavor:
+          name: "m1.tiny"
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
   NovaServers.resize_server:
     -
       args:
@@ -295,6 +294,80 @@
         to_flavor:
             name: "m1.small"
         confirm: true
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 2
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+    -
+      args:
+        flavor:
+            name: "m1.tiny"
+        image:
+            name: {{image_name}}
+        to_flavor:
+            name: "m1.small"
+        confirm: false
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 2
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  NovaServers.boot_server_attach_created_volume_and_resize:
+    -
+      args:
+        flavor:
+            name: "m1.tiny"
+        image:
+            name: {{image_name}}
+        to_flavor:
+            name: "m1.small"
+        volume_size: 1
+        confirm: true
+        force_delete: false
+        do_delete: true
+        boot_server_kwargs: {}
+        create_volume_kwargs: {}
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 2
+          users_per_tenant: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  NovaServers.boot_server_from_volume_and_resize:
+    -
+      args:
+        flavor:
+            name: "m1.tiny"
+        image:
+            name: {{image_name}}
+        to_flavor:
+            name: "m1.small"
+        volume_size: 1
+        confirm: true
+        force_delete: false
+        do_delete: true
+        boot_server_kwargs: {}
+        create_volume_kwargs: {}
       runner:
         type: "constant"
         times: 2
@@ -579,6 +652,23 @@
       sla:
         failure_rate:
           max: 0
+    -
+      args:
+        key_type: "x509"
+      runner:
+        type: "constant"
+        times: 4
+        concurrency: 4
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 2
+        api_versions:
+          nova:
+            version: 2.2
+      sla:
+        failure_rate:
+          max: 0
 
   NovaKeypair.create_and_list_keypairs:
     -
@@ -611,6 +701,29 @@
           users_per_tenant: 2
         network:
           start_cidr: "10.2.0.0/24"
+      sla:
+        failure_rate:
+          max: 0
+    -
+      args:
+        flavor:
+          name: "m1.tiny"
+        image:
+          name: {{image_name}}
+        key_type: "x509"
+      runner:
+        type: "constant"
+        times: 2
+        concurrency: 2
+      context:
+        users:
+          tenants: 3
+          users_per_tenant: 2
+        network:
+          start_cidr: "10.2.0.0/24"
+        api_versions:
+          nova:
+            version: 2.2
       sla:
         failure_rate:
           max: 0
@@ -672,7 +785,7 @@
         image:
           name: {{image_name}}
         floating_network: "public"
-        use_floatingip: true
+        use_floating_ip: true
         command:
           script_inline: |
             time_seconds(){ (time -p $1 ) 2>&1 |awk '/real/{print $2}'; }
@@ -708,7 +821,7 @@
           name: {{image_name}}
         volume_args:
             size: 2
-        use_floatingip: true
+        use_floating_ip: true
         command:
           script_file: "~/.rally/extra/instance_dd_test.sh"
           interpreter: "/bin/sh"
@@ -731,7 +844,7 @@
           name: "m1.tiny"
         image:
           name: {{image_name}}
-        use_floatingip: false
+        use_floating_ip: false
         command:
           script_file: "~/.rally/extra/instance_dd_test.sh"
           interpreter: "/bin/sh"

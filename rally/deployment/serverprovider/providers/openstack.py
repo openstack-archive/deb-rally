@@ -20,7 +20,7 @@ import os
 import novaclient.exceptions
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import objects
 from rally.deployment.serverprovider import provider
 from rally import exceptions
@@ -83,7 +83,8 @@ class OpenStackProvider(provider.ProviderFactory):
                 "name": "Ubuntu Precise(added by rally)",
                 "format": "qcow2",
                 "userdata": "#cloud-config\r\n disable_root: false"
-            }
+            },
+            "secgroup_name": "Rally"
         }
     """
 
@@ -128,6 +129,7 @@ class OpenStackProvider(provider.ProviderFactory):
                     }
                 ]
             },
+            "secgroup_name": {"type": "string"},
         },
         "additionalProperties": False,
         "required": ["user", "password", "tenant", "deployment_name",
@@ -136,11 +138,13 @@ class OpenStackProvider(provider.ProviderFactory):
 
     def __init__(self, deployment, config):
         super(OpenStackProvider, self).__init__(deployment, config)
-        user_endpoint = objects.Endpoint(config["auth_url"], config["user"],
-                                         config["password"], config["tenant"],
-                                         region_name=config.get("region"))
-        clients = osclients.Clients(user_endpoint)
+        user_credential = objects.Credential(
+            config["auth_url"], config["user"],
+            config["password"], config["tenant"],
+            region_name=config.get("region"))
+        clients = osclients.Clients(user_credential)
         self.nova = clients.nova()
+        self.sg = None
         try:
             self.glance = clients.glance()
         except KeyError:
@@ -203,6 +207,22 @@ class OpenStackProvider(provider.ProviderFactory):
     def get_nics(self):
         return self.config.get("nics", None)
 
+    def create_security_group_and_rules(self):
+        sec_group_name = self.config.get("secgroup_name",
+                                         "rally_security_group")
+        rule_params = {
+            "cidr": "0.0.0.0",
+            "from_port": 0,
+            "to_port": 0,
+            "ip_protocol": "tcp"
+        }
+
+        self.sg = self.nova.security_groups.create(sec_group_name,
+                                                   sec_group_name)
+
+        self.nova.security_group_rules.create(
+            self.sg.id, **rule_params)
+
     def create_servers(self):
         """Create VMs with chosen image."""
 
@@ -212,6 +232,9 @@ class OpenStackProvider(provider.ProviderFactory):
         nics = self.get_nics()
 
         keypair, public_key_path = self.create_keypair()
+        self.create_security_group_and_rules()
+
+        sg_args = {"security_groups": [self.sg.name]} if self.sg else {}
 
         os_servers = []
         for i in range(self.config.get("amount", 1)):
@@ -221,12 +244,13 @@ class OpenStackProvider(provider.ProviderFactory):
                 nics=nics,
                 key_name=keypair.name,
                 userdata=userdata,
-                config_drive=self.config.get("config_drive", False))
+                config_drive=self.config.get("config_drive", False),
+                **sg_args)
             os_servers.append(server)
             self.resources.create({"id": server.id}, type=SERVER_TYPE)
 
         kwargs = {
-            "is_ready": utils.resource_is("ACTIVE"),
+            "ready_statuses": ["ACTIVE"],
             "update_resource": utils.get_from_manager(),
             "timeout": 120,
             "check_interval": 5
@@ -247,6 +271,13 @@ class OpenStackProvider(provider.ProviderFactory):
                 utils.wait_for(s, is_ready=_cloud_init_success)
 
         return servers
+
+    def delete_security_group(self):
+        sg_name = self.config.get("secgroup_name", "rally_security_group")
+        sgs = self.nova.security_groups.list(serch_opts={"name": sg_name})
+        if sgs:
+            for secgroup in sgs:
+                self.nova.security_groups.delete(secgroup.id)
 
     def destroy_servers(self):
         for resource in self.resources.get_all(type=SERVER_TYPE):
@@ -285,3 +316,5 @@ class OpenStackProvider(provider.ProviderFactory):
                          name=resource["info"]["id"]
                          )
                 )
+            finally:
+                self.delete_security_group()

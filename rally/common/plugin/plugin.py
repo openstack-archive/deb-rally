@@ -13,6 +13,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import sys
+
 from rally.common.plugin import discover
 from rally.common.plugin import info
 from rally.common.plugin import meta
@@ -75,7 +77,7 @@ def from_func(plugin_baseclass=None):
     assert my_plugin_like_func.get_all() == []
 
 
-    As a result adding plugin behavior for benchmark scenarios fully unifies
+    As a result, adding plugin behavior for benchmark scenarios fully unifies
     work with benchmark scenarios and other kinds of plugins.
 
     :param plugin_baseclass: if specified, subclass of this class will be used
@@ -142,13 +144,17 @@ class Plugin(meta.MetaMixin, info.InfoMixin):
     @classmethod
     def _set_name_and_namespace(cls, name, namespace):
         try:
-            Plugin.get(name, namespace=namespace)
+            existing_plugin = Plugin.get(name, namespace=namespace)
         except exceptions.PluginNotFound:
             cls._meta_set("name", name)
             cls._meta_set("namespace", namespace)
         else:
-            raise exceptions.PluginWithSuchNameExists(name=name,
-                                                      namespace=namespace)
+            raise exceptions.PluginWithSuchNameExists(
+                name=name, namespace=namespace,
+                existing_path=(
+                    sys.modules[existing_plugin.__module__].__file__),
+                new_path=sys.modules[cls.__module__].__file__
+            )
 
     @classmethod
     def _set_deprecated(cls, reason, rally_version):
@@ -166,7 +172,7 @@ class Plugin(meta.MetaMixin, info.InfoMixin):
 
     @classmethod
     def get(cls, name, namespace=None):
-        """Return plugin by it's name from specified namespace.
+        """Return plugin by its name from specified namespace.
 
         This method iterates over all subclasses of cls and returns plugin
         by name from specified namespace.

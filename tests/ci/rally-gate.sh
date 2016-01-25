@@ -54,25 +54,27 @@ set -o pipefail
 
 rally deployment use --deployment devstack
 rally deployment check
-rally show flavors
-rally show images
-rally show networks
-rally show secgroups
-rally show keypairs
+
+python $BASE/new/rally/tests/ci/osresources.py\
+    --dump-list resources_at_start.txt
 
 rally -v --rally-debug task start --task $TASK $TASK_ARGS
 
 mkdir -p rally-plot/extra
-python $BASE/new/rally/rally/ui/utils.py render\
-    tests/ci/rally-gate/index.mako > rally-plot/extra/index.html
+python $BASE/new/rally/tests/ci/render.py ci/index.mako > rally-plot/extra/index.html
 cp $TASK rally-plot/task.txt
 tar -czf rally-plot/plugins.tar.gz -C $RALLY_PLUGINS_DIR .
-rally task report --out rally-plot/results.html
-gzip -9 rally-plot/results.html
 rally task results | python -m json.tool > rally-plot/results.json
 gzip -9 rally-plot/results.json
 rally task detailed > rally-plot/detailed.txt
 gzip -9 rally-plot/detailed.txt
 rally task detailed --iterations-data > rally-plot/detailed_with_iterations.txt
 gzip -9 rally-plot/detailed_with_iterations.txt
+rally task report --out rally-plot/results.html
+gzip -9 rally-plot/results.html
 rally task sla_check | tee rally-plot/sla.txt
+
+python $BASE/new/rally/tests/ci/osresources.py\
+    --compare-with-list resources_at_start.txt\
+        | gzip > rally-plot/resources_diff.txt.gz
+cp resources_at_start.txt rally-plot/

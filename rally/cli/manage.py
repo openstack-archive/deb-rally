@@ -28,6 +28,7 @@ class DBCommands(object):
     """Commands for DB management."""
 
     def recreate(self):
+        """Drop and create Rally database."""
         db.db_drop()
         db.db_create()
         envutils.clear_env()
@@ -35,8 +36,8 @@ class DBCommands(object):
 
 def main():
     categories = {"db": DBCommands}
-    cliutils.run(sys.argv, categories)
+    return cliutils.run(sys.argv, categories)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

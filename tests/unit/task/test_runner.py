@@ -38,7 +38,7 @@ class ScenarioRunnerHelpersTestCase(test.TestCase):
         expected = {
             "duration": 100,
             "idle_duration": 0,
-            "scenario_output": {"errors": "", "data": {}},
+            "output": {"additive": [], "complete": []},
             "atomic_actions": {},
             "error": mock_format_exc.return_value
         }
@@ -85,13 +85,35 @@ class ScenarioRunnerHelpersTestCase(test.TestCase):
             "timestamp": fakes.FakeTimer().timestamp(),
             "idle_duration": 0,
             "error": [],
-            "scenario_output": {"errors": "", "data": {}},
+            "output": {"additive": [], "complete": []},
             "atomic_actions": {}
         }
         self.assertEqual(expected_result, result)
 
     @mock.patch(BASE + "rutils.Timer", side_effect=fakes.FakeTimer)
-    def test_run_scenario_once_with_scenario_output(self, mock_timer):
+    def test_run_scenario_once_with_added_scenario_output(self, mock_timer):
+        args = (1, fakes.FakeScenario, "with_add_output", mock.MagicMock(), {})
+        result = runner._run_scenario_once(args)
+
+        expected_result = {
+            "duration": fakes.FakeTimer().duration(),
+            "timestamp": fakes.FakeTimer().timestamp(),
+            "idle_duration": 0,
+            "error": [],
+            "output": {"additive": [{"chart_plugin": "FooPlugin",
+                                     "description": "Additive description",
+                                     "data": [["a", 1]],
+                                     "title": "Additive"}],
+                       "complete": [{"data": [["a", [[1, 2], [2, 3]]]],
+                                     "description": "Complete description",
+                                     "title": "Complete",
+                                     "chart_plugin": "BarPlugin"}]},
+            "atomic_actions": {}
+        }
+        self.assertEqual(expected_result, result)
+
+    @mock.patch(BASE + "rutils.Timer", side_effect=fakes.FakeTimer)
+    def test_run_scenario_once_with_returned_scenario_output(self, mock_timer):
         args = (1, fakes.FakeScenario, "with_output", mock.MagicMock(), {})
         result = runner._run_scenario_once(args)
 
@@ -100,8 +122,11 @@ class ScenarioRunnerHelpersTestCase(test.TestCase):
             "timestamp": fakes.FakeTimer().timestamp(),
             "idle_duration": 0,
             "error": [],
-            "scenario_output": fakes.FakeScenario(
-                test.get_test_context()).with_output(),
+            "output": {"additive": [{"chart_plugin": "StackedArea",
+                                     "description": "",
+                                     "data": [["a", 1]],
+                                     "title": "Scenario output"}],
+                       "complete": []},
             "atomic_actions": {}
         }
         self.assertEqual(expected_result, result)
@@ -116,7 +141,7 @@ class ScenarioRunnerHelpersTestCase(test.TestCase):
             "duration": fakes.FakeTimer().duration(),
             "timestamp": fakes.FakeTimer().timestamp(),
             "idle_duration": 0,
-            "scenario_output": {"errors": "", "data": {}},
+            "output": {"additive": [], "complete": []},
             "atomic_actions": {}
         }
         self.assertEqual(expected_result, result)
@@ -131,20 +156,18 @@ class ScenarioRunnerResultTestCase(test.TestCase):
             {
                 "duration": 1.0,
                 "idle_duration": 1.0,
-                "scenario_output": {
-                    "data": {"test": 1.0},
-                    "errors": "test error string 1"
-                },
+                "output": {"additive": [], "complete": []},
                 "atomic_actions": {"test1": 1.0},
                 "error": []
             },
             {
                 "duration": 2.0,
                 "idle_duration": 2.0,
-                "scenario_output": {
-                    "data": {"test": 2.0},
-                    "errors": "test error string 2"
-                },
+                "output": {"additive": [{"chart_plugin": "StackedArea",
+                                         "data": [["a", 1]],
+                                         "title": "Scenario output",
+                                         "description": ""}],
+                           "complete": []},
                 "atomic_actions": {"test2": 2.0},
                 "error": ["a", "b", "c"]
             }
@@ -175,7 +198,7 @@ class ScenarioRunnerTestCase(test.TestCase):
         context_obj = {
             "task": runner_obj.task,
             "scenario_name": scenario_name,
-            "admin": {"endpoint": mock.MagicMock()},
+            "admin": {"credential": mock.MagicMock()},
             "config": {
                 "cleanup": ["nova", "cinder"], "some_ctx": 2, "users": {}
             }

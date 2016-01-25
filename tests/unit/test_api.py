@@ -19,9 +19,11 @@ import os
 
 import ddt
 import jsonschema
+from keystoneclient import exceptions as keystone_exceptions
 import mock
 
 from rally import api
+from rally.common import objects
 from rally import consts
 from rally import exceptions
 from tests.unit import fakes
@@ -60,12 +62,12 @@ class TaskAPITestCase(test.TestCase):
                 return_value=fakes.FakeDeployment(uuid="deployment_uuid",
                                                   admin=mock.MagicMock(),
                                                   users=[]))
-    @mock.patch("rally.api.engine.BenchmarkEngine")
+    @mock.patch("rally.api.engine.TaskEngine")
     def test_validate(
-            self, mock_benchmark_engine, mock_deployment_get, mock_task):
+            self, mock_task_engine, mock_deployment_get, mock_task):
         api.Task.validate(mock_deployment_get.return_value["uuid"], "config")
 
-        mock_benchmark_engine.assert_has_calls([
+        mock_task_engine.assert_has_calls([
             mock.call("config", mock_task.return_value,
                       admin=mock_deployment_get.return_value["admin"],
                       users=[]),
@@ -83,12 +85,12 @@ class TaskAPITestCase(test.TestCase):
                 return_value=fakes.FakeDeployment(uuid="deployment_uuid",
                                                   admin=mock.MagicMock(),
                                                   users=[]))
-    @mock.patch("rally.api.engine.BenchmarkEngine")
-    def test_validate_engine_exception(self, mock_benchmark_engine,
+    @mock.patch("rally.api.engine.TaskEngine")
+    def test_validate_engine_exception(self, mock_task_engine,
                                        mock_deployment, mock_task):
 
         excpt = exceptions.InvalidTaskException()
-        mock_benchmark_engine.return_value.validate.side_effect = excpt
+        mock_task_engine.return_value.validate.side_effect = excpt
         self.assertRaises(exceptions.InvalidTaskException, api.Task.validate,
                           mock_deployment.return_value["uuid"], "config")
 
@@ -132,6 +134,22 @@ class TaskAPITestCase(test.TestCase):
                                           os.path.dirname(other_template_path))
         self.assertEqual(expect, actual)
 
+    def test_render_template_min(self):
+        template = "{{ min(1, 2)}}"
+        self.assertEqual("1", api.Task.render_template(template))
+
+    def test_render_template_max(self):
+        template = "{{ max(1, 2)}}"
+        self.assertEqual("2", api.Task.render_template(template))
+
+    def test_render_template_ceil(self):
+        template = "{{ ceil(2.2)}}"
+        self.assertEqual("3", api.Task.render_template(template))
+
+    def test_render_template_round(self):
+        template = "{{ round(2.2)}}"
+        self.assertEqual("2", api.Task.render_template(template))
+
     @mock.patch("rally.common.objects.Deployment.get",
                 return_value={"uuid": "b0d9cd6c-2c94-4417-a238-35c7019d0257"})
     @mock.patch("rally.common.objects.Task")
@@ -147,12 +165,12 @@ class TaskAPITestCase(test.TestCase):
                 return_value=fakes.FakeDeployment(uuid="deployment_uuid",
                                                   admin=mock.MagicMock(),
                                                   users=[]))
-    @mock.patch("rally.api.engine.BenchmarkEngine")
-    def test_start(self, mock_benchmark_engine, mock_deployment_get,
+    @mock.patch("rally.api.engine.TaskEngine")
+    def test_start(self, mock_task_engine, mock_deployment_get,
                    mock_task):
         api.Task.start(mock_deployment_get.return_value["uuid"], "config")
 
-        mock_benchmark_engine.assert_has_calls([
+        mock_task_engine.assert_has_calls([
             mock.call("config", mock_task.return_value,
                       admin=mock_deployment_get.return_value["admin"],
                       users=[], abort_on_sla_failure=False),
@@ -180,11 +198,11 @@ class TaskAPITestCase(test.TestCase):
 
     @mock.patch("rally.api.objects.Task")
     @mock.patch("rally.api.objects.Deployment.get")
-    @mock.patch("rally.api.engine.BenchmarkEngine")
-    def test_start_exception(self, mock_benchmark_engine, mock_deployment_get,
+    @mock.patch("rally.api.engine.TaskEngine")
+    def test_start_exception(self, mock_task_engine, mock_deployment_get,
                              mock_task):
         mock_task.return_value.is_temporary = False
-        mock_benchmark_engine.return_value.run.side_effect = TypeError
+        mock_task_engine.return_value.run.side_effect = TypeError
         self.assertRaises(TypeError, api.Task.start, "deployment_uuid",
                           "config")
         mock_deployment_get().update_status.assert_called_once_with(
@@ -244,19 +262,19 @@ class BaseDeploymentTestCase(test.TestCase):
         super(BaseDeploymentTestCase, self).setUp()
         self.deployment_config = FAKE_DEPLOYMENT_CONFIG
         self.deployment_uuid = "599bdf1d-fe77-461a-a810-d59b1490f4e3"
-        admin_endpoint = FAKE_DEPLOYMENT_CONFIG.copy()
-        admin_endpoint.pop("type")
-        admin_endpoint["endpoint"] = None
-        admin_endpoint.update(admin_endpoint.pop("admin"))
-        admin_endpoint["permission"] = consts.EndpointPermission.ADMIN
-        admin_endpoint["https_insecure"] = False
-        admin_endpoint["https_cacert"] = None
-        self.endpoints = {"admin": admin_endpoint, "users": []}
+        admin_credential = FAKE_DEPLOYMENT_CONFIG.copy()
+        admin_credential.pop("type")
+        admin_credential["endpoint"] = None
+        admin_credential.update(admin_credential.pop("admin"))
+        admin_credential["permission"] = consts.EndpointPermission.ADMIN
+        admin_credential["https_insecure"] = False
+        admin_credential["https_cacert"] = None
+        self.credentials = {"admin": admin_credential, "users": []}
         self.deployment = {
             "uuid": self.deployment_uuid,
             "name": "fake_name",
             "config": self.deployment_config,
-            "admin": self.endpoints["admin"],
+            "admin": self.credentials["admin"],
             "users": []
         }
 
@@ -276,7 +294,7 @@ class DeploymentAPITestCase(BaseDeploymentTestCase):
         })
         mock_engine_validate.assert_called_with()
         mock_deployment_update.assert_has_calls([
-            mock.call(self.deployment_uuid, self.endpoints)
+            mock.call(self.deployment_uuid, self.credentials)
         ])
 
     @mock.patch("rally.common.objects.deploy.db.deployment_update")
@@ -322,7 +340,7 @@ class DeploymentAPITestCase(BaseDeploymentTestCase):
         api.Deployment.recreate(self.deployment_uuid)
         mock_deployment_get.assert_called_once_with(self.deployment_uuid)
         mock_deployment_update.assert_has_calls([
-            mock.call(self.deployment_uuid, self.endpoints)
+            mock.call(self.deployment_uuid, self.credentials)
         ])
 
     @mock.patch("rally.common.objects.deploy.db.deployment_get")
@@ -332,6 +350,43 @@ class DeploymentAPITestCase(BaseDeploymentTestCase):
         ret = api.Deployment.get(deployment_id)
         for key in self.deployment:
             self.assertEqual(ret[key], self.deployment[key])
+
+    @mock.patch("rally.common.objects.Deployment.list")
+    def test_list(self, mock_deployment_list):
+        mock_deployment_list.return_value = self.deployment
+        ret = api.Deployment.list()
+        for key in self.deployment:
+            self.assertEqual(ret[key], self.deployment[key])
+
+    @mock.patch("rally.osclients.Keystone.create_client")
+    def test_deployment_check(self, mock_keystone_create_client):
+        sample_credential = objects.Credential("http://192.168.1.1:5000/v2.0/",
+                                               "admin",
+                                               "adminpass").to_dict()
+        deployment = {"admin": sample_credential,
+                      "users": [sample_credential]}
+        api.Deployment.check(deployment)
+        mock_keystone_create_client.assert_called_with()
+
+    def test_deployment_check_raise(self):
+        sample_credential = objects.Credential("http://192.168.1.1:5000/v2.0/",
+                                               "admin",
+                                               "adminpass").to_dict()
+        sample_credential["not-exist-key"] = "error"
+        deployment = {"admin": sample_credential}
+        self.assertRaises(TypeError, api.Deployment.check, deployment)
+
+    @mock.patch("rally.osclients.Clients.services")
+    def test_deployment_check_connect_failed(self, mock_clients_services):
+        sample_credential = objects.Credential("http://192.168.1.1:5000/v2.0/",
+                                               "admin",
+                                               "adminpass").to_dict()
+        deployment = {"admin": sample_credential}
+        refused = keystone_exceptions.ConnectionRefused()
+        mock_clients_services.side_effect = refused
+        self.assertRaises(
+            keystone_exceptions.ConnectionRefused,
+            api.Deployment.check, deployment)
 
 
 class VerificationAPITestCase(BaseDeploymentTestCase):
@@ -348,11 +403,14 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
 
         mock_tempest.return_value = self.tempest
         self.tempest.is_installed.return_value = True
-        api.Verification.verify(self.deployment_uuid, "smoke", None, None)
+        api.Verification.verify(
+            self.deployment_uuid, set_name="smoke",
+            regex=None, tests_file=None, tempest_config=None)
 
         self.tempest.is_installed.assert_called_once_with()
-        self.tempest.verify.assert_called_once_with(set_name="smoke",
-                                                    regex=None)
+        self.tempest.verify.assert_called_once_with(
+            set_name="smoke", regex=None, tests_file=None,
+            expected_failures=None, concur=0)
 
     @mock.patch("rally.api.objects.Deployment.get")
     @mock.patch("rally.api.objects.Verification")
@@ -363,12 +421,33 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         mock_deployment_get.return_value = {"uuid": self.deployment_uuid}
         mock_tempest.return_value = self.tempest
         self.tempest.is_installed.return_value = False
-        api.Verification.verify(self.deployment_uuid, "smoke", None, None)
+        api.Verification.verify(
+            self.deployment_uuid, set_name="smoke",
+            regex=None, tests_file=None, tempest_config=None)
 
         self.tempest.is_installed.assert_called_once_with()
         self.tempest.install.assert_called_once_with()
-        self.tempest.verify.assert_called_once_with(set_name="smoke",
-                                                    regex=None)
+        self.tempest.verify.assert_called_once_with(
+            set_name="smoke", regex=None, tests_file=None,
+            expected_failures=None, concur=0)
+
+    @mock.patch("os.path.exists", return_value=True)
+    @mock.patch("rally.api.objects.Deployment.get")
+    @mock.patch("rally.api.objects.Verification")
+    @mock.patch("rally.verification.tempest.tempest.Tempest")
+    def test_verify_tests_file_specified(self, mock_tempest, mock_verification,
+                                         mock_deployment_get, mock_exists):
+        mock_deployment_get.return_value = {"uuid": self.deployment_uuid}
+        mock_tempest.return_value = self.tempest
+        self.tempest.is_installed.return_value = True
+        tests_file = "/path/to/tests/file"
+        api.Verification.verify(
+            self.deployment_uuid, set_name="", regex=None,
+            tests_file=tests_file, tempest_config=None)
+
+        self.tempest.verify.assert_called_once_with(
+            set_name="", regex=None, tests_file=tests_file,
+            expected_failures=None, concur=0)
 
     @mock.patch("rally.common.objects.Deployment.get")
     @mock.patch("rally.api.objects.Verification")
@@ -421,9 +500,71 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         self.tempest.install.assert_called_once_with()
         mock_move.assert_called_once_with(tmp_file, fake_conf)
 
+    @mock.patch("os.path.exists", return_value=True)
     @mock.patch("rally.common.objects.Deployment.get")
     @mock.patch("rally.verification.tempest.tempest.Tempest")
-    def test_configure_tempest(self, mock_tempest, mock_deployment_get):
+    def test_configure_tempest_when_tempest_tree_exists(
+            self, mock_tempest, mock_deployment_get, mock_exists):
         mock_tempest.return_value = self.tempest
         api.Verification.configure_tempest(self.deployment_uuid)
         self.tempest.generate_config_file.assert_called_once_with(False)
+
+    @mock.patch("os.path.exists", return_value=False)
+    @mock.patch("rally.common.objects.Deployment.get")
+    @mock.patch("rally.verification.tempest.tempest.Tempest")
+    def test_configure_tempest_when_no_tempest_tree_exists(
+            self, mock_tempest, mock_deployment_get, mock_exists):
+        mock_tempest.return_value = self.tempest
+        self.assertRaises(exceptions.NotFoundException,
+                          api.Verification.configure_tempest,
+                          self.deployment_uuid)
+        self.assertEqual(0, self.tempest.generate_config_file.call_count)
+
+    @mock.patch("six.moves.builtins.open", side_effect=mock.mock_open())
+    @mock.patch("os.path.exists", return_value=True)
+    @mock.patch("rally.common.objects.Deployment.get")
+    @mock.patch("rally.verification.tempest.tempest.Tempest")
+    def test_show_config_info_when_tempest_tree_and_config_exist(
+            self, mock_tempest, mock_deployment_get, mock_exists, mock_open):
+        self.tempest.is_configured.return_value = True
+        self.tempest.config_file = "/path/to/fake/conf"
+        mock_tempest.return_value = self.tempest
+        api.Verification.show_config_info(self.deployment_uuid)
+        mock_open.assert_called_once_with("/path/to/fake/conf", "rb")
+
+    @mock.patch("six.moves.builtins.open", side_effect=mock.mock_open())
+    @mock.patch("os.path.exists", return_value=True)
+    @mock.patch("rally.common.objects.Deployment.get")
+    @mock.patch("rally.verification.tempest.tempest.Tempest")
+    def test_show_config_info_when_tempest_tree_exists_and_config_doesnt(
+            self, mock_tempest, mock_deployment_get, mock_exists, mock_open):
+        self.tempest.is_configured.return_value = False
+        self.tempest.config_file = "/path/to/fake/conf"
+        mock_tempest.return_value = self.tempest
+        api.Verification.show_config_info(self.deployment_uuid)
+        self.tempest.generate_config_file.assert_called_once_with()
+        mock_open.assert_called_once_with("/path/to/fake/conf", "rb")
+
+    @mock.patch("six.moves.builtins.open", side_effect=mock.mock_open())
+    @mock.patch("os.path.exists", return_value=False)
+    @mock.patch("rally.common.objects.Deployment.get")
+    @mock.patch("rally.verification.tempest.tempest.Tempest")
+    def test_show_config_info_when_no_tempest_tree_exists(
+            self, mock_tempest, mock_deployment_get, mock_exists, mock_open):
+        mock_tempest.return_value = self.tempest
+        self.assertRaises(exceptions.NotFoundException,
+                          api.Verification.show_config_info,
+                          self.deployment_uuid)
+        self.assertEqual(0, mock_open.call_count)
+
+    @mock.patch("rally.common.objects.Verification.list")
+    def test_delete(self, mock_verification_list):
+        retval = api.Verification.list()
+        self.assertEqual(mock_verification_list.return_value, retval)
+        mock_verification_list.assert_called_once_with(None)
+
+    @mock.patch("rally.common.objects.Verification.get")
+    def test_get(self, mock_verification_get):
+        retval = api.Verification.get("fake_id")
+        self.assertEqual(mock_verification_get.return_value, retval)
+        mock_verification_get.assert_called_once_with("fake_id")

@@ -22,7 +22,7 @@ import six
 
 from rally.common import broker
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import objects
 from rally.common import utils as rutils
 from rally import consts
@@ -103,8 +103,6 @@ class UserGenerator(UserContextMixin, context.Context):
         },
         "additionalProperties": False
     }
-    PATTERN_TENANT = "ctx_rally_%(task_id)s_tenant_%(iter)i"
-    PATTERN_USER = "ctx_rally_%(tenant_id)s_user_%(uid)d"
 
     DEFAULT_CONFIG = {
         "tenants": 1,
@@ -117,18 +115,17 @@ class UserGenerator(UserContextMixin, context.Context):
 
     def __init__(self, context):
         super(UserGenerator, self).__init__(context)
-        self.endpoint = self.context["admin"]["endpoint"]
+        self.credential = self.context["admin"]["credential"]
 
     def _remove_default_security_group(self):
         """Delete default security group for tenants."""
-        clients = osclients.Clients(self.endpoint)
+        clients = osclients.Clients(self.credential)
 
         if consts.Service.NEUTRON not in clients.services().values():
             return
 
-        use_sg, msg = network.wrap(clients,
-                                   self.context["task"]).supports_extension(
-                                       "security-group")
+        use_sg, msg = network.wrap(clients, self).supports_extension(
+            "security-group")
         if not use_sg:
             LOG.debug("Security group context is disabled: %s" % msg)
             return
@@ -137,7 +134,7 @@ class UserGenerator(UserContextMixin, context.Context):
                 self.context["users"]):
             with logging.ExceptionLogger(
                     LOG, _("Unable to delete default security group")):
-                uclients = osclients.Clients(user["endpoint"])
+                uclients = osclients.Clients(user["credential"])
                 sg = uclients.nova().security_groups.find(name="default")
                 clients.neutron().delete_security_group(sg.id)
 
@@ -146,7 +143,7 @@ class UserGenerator(UserContextMixin, context.Context):
         # NOTE(rmk): Ugly hack to deal with the fact that Nova Network
         # networks can only be disassociated in an admin context. Discussed
         # with boris-42 before taking this approach [LP-Bug #1350517].
-        clients = osclients.Clients(self.endpoint)
+        clients = osclients.Clients(self.credential)
         if consts.Service.NOVA not in clients.services().values():
             return
 
@@ -178,10 +175,10 @@ class UserGenerator(UserContextMixin, context.Context):
         def consume(cache, args):
             domain, task_id, i = args
             if "client" not in cache:
-                clients = osclients.Clients(self.endpoint)
+                clients = osclients.Clients(self.credential)
                 cache["client"] = keystone.wrap(clients.keystone())
             tenant = cache["client"].create_project(
-                self.PATTERN_TENANT % {"task_id": task_id, "iter": i}, domain)
+                self.generate_random_name(), domain)
             tenant_dict = {"id": tenant.id, "name": tenant.name}
             tenants.append(tenant_dict)
 
@@ -203,8 +200,7 @@ class UserGenerator(UserContextMixin, context.Context):
         def publish(queue):
             for tenant_id in self.context["tenants"]:
                 for user_id in range(users_per_tenant):
-                    username = self.PATTERN_USER % {"tenant_id": tenant_id,
-                                                    "uid": user_id}
+                    username = self.generate_random_name()
                     password = str(uuid.uuid4())
                     args = (username, password, self.config["project_domain"],
                             self.config["user_domain"], tenant_id)
@@ -213,22 +209,22 @@ class UserGenerator(UserContextMixin, context.Context):
         def consume(cache, args):
             username, password, project_dom, user_dom, tenant_id = args
             if "client" not in cache:
-                clients = osclients.Clients(self.endpoint)
+                clients = osclients.Clients(self.credential)
                 cache["client"] = keystone.wrap(clients.keystone())
             client = cache["client"]
             user = client.create_user(username, password,
                                       "%s@email.me" % username,
                                       tenant_id, user_dom)
-            user_endpoint = objects.Endpoint(
+            user_credential = objects.Credential(
                 client.auth_url, user.name, password,
                 self.context["tenants"][tenant_id]["name"],
                 consts.EndpointPermission.USER, client.region_name,
                 project_domain_name=project_dom, user_domain_name=user_dom,
-                endpoint_type=self.endpoint.endpoint_type,
-                https_insecure=self.endpoint.insecure,
-                https_cacert=self.endpoint.cacert)
+                endpoint_type=self.credential.endpoint_type,
+                https_insecure=self.credential.insecure,
+                https_cacert=self.credential.cacert)
             users.append({"id": user.id,
-                          "endpoint": user_endpoint,
+                          "credential": user_credential,
                           "tenant_id": tenant_id})
 
         # NOTE(msdubov): consume() will fill the users list in the closure.
@@ -246,7 +242,7 @@ class UserGenerator(UserContextMixin, context.Context):
 
         def consume(cache, tenant_id):
             if "client" not in cache:
-                clients = osclients.Clients(self.endpoint)
+                clients = osclients.Clients(self.credential)
                 cache["client"] = keystone.wrap(clients.keystone())
             cache["client"].delete_project(tenant_id)
 
@@ -262,14 +258,14 @@ class UserGenerator(UserContextMixin, context.Context):
 
         def consume(cache, user_id):
             if "client" not in cache:
-                clients = osclients.Clients(self.endpoint)
+                clients = osclients.Clients(self.credential)
                 cache["client"] = keystone.wrap(clients.keystone())
             cache["client"].delete_user(user_id)
 
         broker.run(publish, consume, threads)
         self.context["users"] = []
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `users`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `users`"))
     def setup(self):
         """Create tenants and users, using the broker pattern."""
         self.context["users"] = []
@@ -296,7 +292,7 @@ class UserGenerator(UserContextMixin, context.Context):
                 ctx_name=self.get_name(),
                 msg=_("Failed to create the requested number of users."))
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `users`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `users`"))
     def cleanup(self):
         """Delete tenants and users, using the broker pattern."""
         self._remove_default_security_group()

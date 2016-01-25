@@ -10,6 +10,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import datetime
+
 import mock
 
 from rally.verification.tempest import json2html
@@ -20,85 +22,93 @@ BASE = "rally.verification.tempest"
 
 class HtmlOutputTestCase(test.TestCase):
 
-    results = {
-        "time": 22,
-        "tests": 4,
-        "errors": 1,
-        "success": 1,
-        "skipped": 1,
-        "failures": 1,
-        "test_cases": {
-            "tp": {"name": "tp",
-                   "status": "OK",
-                   "output": "tp_ok",
-                   "time": 2},
-            "ts": {"name": "ts",
-                   "status": "SKIP",
-                   "output": "ts_skip",
-                   "time": 4},
-            "tf": {"name": "tf",
-                   "status": "FAIL",
-                   "output": "tf_fail",
-                   "time": 6,
-                   "failure": {"type": "tf", "log": "fail_log"}},
-            "te": {"name": "te",
-                   "time": 2,
-                   "status": "ERROR",
-                   "output": "te_error",
-                   "failure": {"type": "te", "log": "error+log"}}}}
-
-    def test__init(self):
-        obj = json2html.HtmlOutput(self.results)
-        self.assertEqual(obj.num_passed, self.results["success"])
-        self.assertEqual(obj.num_failed, self.results["failures"])
-        self.assertEqual(obj.num_skipped, self.results["skipped"])
-        self.assertEqual(obj.num_errors, self.results["errors"])
-        self.assertEqual(obj.num_total, self.results["tests"])
-        self.assertEqual(obj.results, self.results["test_cases"])
-
-    def test__generate_report(self):
-
-        obj = json2html.HtmlOutput(self.results)
-        expected_report = {
-            "errors": 1,
-            "failed": 1,
-            "passed": 1,
+    @mock.patch(BASE + ".json2html.ui_utils.get_template")
+    def test_generate_report(self, mock_get_template):
+        results = {
+            "time": 22.75,
+            "tests": 4,
+            "success": 1,
             "skipped": 1,
-            "total": 4,
-            "tests": [{"desc": "te",
-                       "id": 0,
-                       "output": "te_errorerror+log",
-                       "status": "error",
+            "failures": 1,
+            "expected_failures": 0,
+            "unexpected_success": 0,
+            "test_cases": {
+                "tp": {"name": "tp",
+                       "status": "success",
                        "time": 2},
-                      {"desc": "tf",
-                       "id": 1,
-                       "output": "tf_failfail_log",
+                "ts": {"name": "ts",
+                       "status": "skip",
+                       "reason": "ts_skip",
+                       "time": 4},
+                "tf": {"name": "tf",
+                       "status": "fail",
+                       "time": 6,
+                       "traceback": "fail_log"}}}
+
+        expected_report = {
+            "failures": 1,
+            "success": 1,
+            "skipped": 1,
+            "expected_failures": 0,
+            "unexpected_success": 0,
+            "total": 4,
+            "time": "{0} ({1} s)".format(
+                datetime.timedelta(seconds=23), 22.75),
+            "tests": [{"name": "tf",
+                       "id": 0,
+                       "output": "fail_log",
                        "status": "fail",
                        "time": 6},
-                      {"desc": "tp",
-                       "id": 2,
-                       "output": "tp_ok",
-                       "status": "pass",
+                      {"name": "tp",
+                       "id": 1,
+                       "output": "",
+                       "status": "success",
                        "time": 2},
-                      {"desc": "ts",
-                       "id": 3,
-                       "output": "ts_skip",
+                      {"name": "ts",
+                       "id": 2,
+                       "output": "Reason:\n  ts_skip",
                        "status": "skip",
                        "time": 4}]}
 
-        report = obj._generate_report()
-        self.assertEqual(report, expected_report)
+        json2html.generate_report(results)
 
-    @mock.patch(BASE + ".json2html.ui_utils.get_template")
-    @mock.patch(BASE + ".json2html.HtmlOutput._generate_report",
-                return_value="report_data")
-    def test_create_report(
-            self, mock_html_output__generate_report, mock_get_template):
-        obj = json2html.HtmlOutput(self.results)
-        mock_get_template.return_value.render.return_value = "html_report"
-
-        html_report = obj.create_report()
-        self.assertEqual(html_report, "html_report")
         mock_get_template.assert_called_once_with("verification/report.mako")
         mock_get_template.return_value.render.assert_called_once_with(
-            report="report_data")
+            report=expected_report)
+
+    @mock.patch(BASE + ".json2html.ui_utils.get_template")
+    def test_convert_bug_id_in_reason_into_bug_link(self, mock_get_template):
+        results = {
+            "failures": 0,
+            "success": 0,
+            "skipped": 1,
+            "expected_failures": 0,
+            "unexpected_success": 0,
+            "tests": 1,
+            "time": 0,
+            "test_cases": {"one_test": {
+                "status": "skip",
+                "name": "one_test",
+                "reason": "Skipped until Bug: 666666 is resolved.",
+                "time": "time"}}}
+
+        expected_report = {
+            "failures": 0,
+            "success": 0,
+            "skipped": 1,
+            "expected_failures": 0,
+            "unexpected_success": 0,
+            "total": 1,
+            "time": "{0} ({1} s)".format(datetime.timedelta(seconds=0), 0),
+            "tests": [{
+                "id": 0,
+                "status": "skip",
+                "name": "one_test",
+                "output": "Reason:\n  Skipped until Bug: <a href='https://"
+                          "launchpad.net/bugs/666666'>666666</a> is resolved.",
+                "time": "time"}]}
+
+        json2html.generate_report(results)
+        mock_get_template.assert_called_once_with("verification/report.mako")
+        mock_get_template.return_value.render.assert_called_once_with(
+            report=expected_report)

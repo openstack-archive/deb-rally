@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from rally.common import utils
+from rally.common import logging
 from rally.plugins.openstack import scenario
 from rally.plugins.openstack.scenarios.keystone import utils as kutils
 from rally.task import validation
@@ -22,29 +22,31 @@ from rally.task import validation
 class KeystoneBasic(kutils.KeystoneScenario):
     """Basic benchmark scenarios for Keystone."""
 
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_user is ignored",
+        "0.1.2", ["name_length"], once=True)
     def create_user(self, name_length=10, **kwargs):
         """Create a keystone user with random name.
 
-        :param name_length: length of the random part of user name
         :param kwargs: Other optional parameters to create users like
                          "tenant_id", "enabled".
         """
-        self._user_create(name_length=name_length, **kwargs)
+        self._user_create(**kwargs)
 
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_delete_user is ignored",
+        "0.1.2", ["name_length"], once=True)
     def create_delete_user(self, name_length=10, **kwargs):
         """Create a keystone user with random name and then delete it.
 
-        :param name_length: length of the random part of user name
         :param kwargs: Other optional parameters to create users like
                          "tenant_id", "enabled".
         """
-        user = self._user_create(name_length=name_length, **kwargs)
+        user = self._user_create(**kwargs)
         self._resource_delete(user)
 
     @validation.required_openstack(admin=True)
@@ -61,57 +63,60 @@ class KeystoneBasic(kutils.KeystoneScenario):
         self._update_user_enabled(user, not enabled)
         self._resource_delete(user)
 
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_tenant is ignored",
+        "0.1.2", ["name_length"], once=True)
     def create_tenant(self, name_length=10, **kwargs):
         """Create a keystone tenant with random name.
 
-        :param name_length: length of the random part of tenant name
         :param kwargs: Other optional parameters
         """
-        self._tenant_create(name_length=name_length, **kwargs)
+        self._tenant_create(**kwargs)
 
-    @validation.number("name_length", minval=10)
     @validation.number("users_per_tenant", minval=1)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_tenant_with_users is ignored",
+        "0.1.2", ["name_length"], once=True)
     def create_tenant_with_users(self, users_per_tenant, name_length=10,
                                  **kwargs):
         """Create a keystone tenant and several users belonging to it.
 
-        :param name_length: length of the random part of tenant/user name
         :param users_per_tenant: number of users to create for the tenant
         :param kwargs: Other optional parameters for tenant creation
         :returns: keystone tenant instance
         """
-        tenant = self._tenant_create(name_length=name_length, **kwargs)
-        self._users_create(tenant, users_per_tenant=users_per_tenant,
-                           name_length=name_length)
+        tenant = self._tenant_create(**kwargs)
+        self._users_create(tenant, users_per_tenant=users_per_tenant)
 
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_and_list_users is ignored",
+        "0.1.2", ["name_length"], once=True)
     def create_and_list_users(self, name_length=10, **kwargs):
         """Create a keystone user with random name and list all users.
 
-        :param name_length: length of the random part of user name
         :param kwargs: Other optional parameters to create users like
                          "tenant_id", "enabled".
         """
-        self._user_create(name_length=name_length, **kwargs)
+        self._user_create(**kwargs)
         self._list_users()
 
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_and_list_tenants is ignored",
+        "0.1.2", ["name_length"], once=True)
     def create_and_list_tenants(self, name_length=10, **kwargs):
         """Create a keystone tenant with random name and list all tenants.
 
-        :param name_length: length of the random part of tenant name
         :param kwargs: Other optional parameters
         """
-        self._tenant_create(name_length=name_length, **kwargs)
+        self._tenant_create(**kwargs)
         self._list_tenants()
 
     @validation.required_openstack(admin=True, users=True)
@@ -157,8 +162,8 @@ class KeystoneBasic(kutils.KeystoneScenario):
                              None, to create an ephemeral service and
                              get it by ID.
         """
-        tenant = self._tenant_create(name_length=5)
-        user = self._user_create(name_length=10)
+        tenant = self._tenant_create()
+        user = self._user_create()
         role = self._role_create()
         self._get_tenant(tenant.id)
         self._get_user(user.id)
@@ -170,7 +175,7 @@ class KeystoneBasic(kutils.KeystoneScenario):
         self._get_service(service.id)
 
     @validation.required_openstack(admin=True)
-    @utils.log_deprecated_args(
+    @logging.log_deprecated_args(
         "The 'name' argument to create_and_delete_service will be ignored",
         "0.0.5", ["name"])
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
@@ -184,35 +189,35 @@ class KeystoneBasic(kutils.KeystoneScenario):
         service = self._service_create(service_type, description)
         self._delete_service(service.id)
 
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
-    def create_update_and_delete_tenant(self, name_length=10, **kwargs):
+    @logging.log_deprecated_args(
+        "The 'name_length' argument to create_update_and_delete_tenant is "
+        "ignored", "0.1.2", ["name_length"], once=True)
+    def create_update_and_delete_tenant(self, name_length=None, **kwargs):
         """Create, update and delete tenant.
 
-        :param name_length: length of the random part of tenant name
         :param kwargs: Other optional parameters for tenant creation
         """
-        tenant = self._tenant_create(name_length=name_length, **kwargs)
+        tenant = self._tenant_create(**kwargs)
         self._update_tenant(tenant)
         self._resource_delete(tenant)
 
-    @validation.number("password_length", minval=10)
-    @validation.number("name_length", minval=10)
     @validation.required_openstack(admin=True)
     @scenario.configure(context={"admin_cleanup": ["keystone"]})
-    def create_user_update_password(self, name_length=10, password_length=10):
-        """Create user and update password for that user.
-
-        :param name_length: length of the user name
-        :param password_length: length of the password
-        """
-        password = self._generate_random_name(length=password_length)
-        user = self._user_create(name_length=name_length)
+    @logging.log_deprecated_args(
+        "The 'name_length' and 'password_length' arguments to "
+        "create_user_update_password are ignored",
+        "0.1.2", ["name_length", "password_length"], once=True)
+    def create_user_update_password(self, name_length=None,
+                                    password_length=None):
+        """Create user and update password for that user."""
+        password = self.generate_random_name()
+        user = self._user_create()
         self._update_user_password(user.id, password)
 
     @validation.required_openstack(admin=True)
-    @utils.log_deprecated_args(
+    @logging.log_deprecated_args(
         "The 'name' argument to create_and_list_services will be ignored",
         "0.0.5", ["name"])
     @scenario.configure(context={"admin_cleanup": ["keystone"]})

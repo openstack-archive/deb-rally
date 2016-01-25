@@ -27,3 +27,7 @@ Rally Specific Commandments
 * [N351] - Ensure that data structs (i.e Lists and Dicts) are declared literally rather than using constructors
 * [N352] - Ensure that string formatting only uses a mapping if multiple mapping keys are used.
 * [N353] - Ensure that unicode() function is not uset because of absence in py3
+* [N354] - Ensure that ``:raises: Exception`` is not used
+* [N360-N370] - Reserved for rules related to CLI
+ * [N360] - Ensure that CLI modules do not use ``rally.common.db``
+ * [N361] - Ensure that CLI modules do not use ``rally.common.objects``

@@ -18,9 +18,8 @@ import os
 import six
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import objects
-from rally.common import utils
 from rally import consts
 from rally.deployment import engine
 from rally.deployment.serverprovider import provider
@@ -52,7 +51,7 @@ class DevstackEngine(engine.Engine):
         {
             "type": "DevstackEngine",
             "devstack_repo": "https://example.com/devstack/",
-            "localrc": {
+            "local_conf": {
                 "ADMIN_PASSWORD": "secret"
             },
             "provider": {
@@ -67,6 +66,7 @@ class DevstackEngine(engine.Engine):
         "properties": {
             "type": {"type": "string"},
             "provider": {"type": "object"},
+            "local_conf": {"type": "object"},
             "localrc": {"type": "object"},
             "devstack_repo": {"type": "string"},
             "devstack_branch": {"type": "string"},
@@ -76,7 +76,7 @@ class DevstackEngine(engine.Engine):
 
     def __init__(self, deployment):
         super(DevstackEngine, self).__init__(deployment)
-        self.localrc = {
+        self.local_conf = {
             "DATABASE_PASSWORD": "rally",
             "RABBIT_PASSWORD": "rally",
             "SERVICE_TOKEN": "rally",
@@ -85,10 +85,18 @@ class DevstackEngine(engine.Engine):
             "RECLONE": "yes",
             "SYSLOG": "yes",
         }
-        if "localrc" in self.config:
-            self.localrc.update(self.config["localrc"])
 
-    @utils.log_deploy_wrapper(LOG.info, _("Prepare server for devstack"))
+        if "localrc" in self.config:
+            LOG.warning("'localrc' parameter is "
+                        "deprecated for deployment config "
+                        "since 0.1.2. Please use 'local_conf' instead.")
+            if "local_conf" not in self.config:
+                self.config["local_conf"] = self.config["localrc"]
+
+        if "local_conf" in self.config:
+            self.local_conf.update(self.config["local_conf"])
+
+    @logging.log_deploy_wrapper(LOG.info, _("Prepare server for devstack"))
     def prepare_server(self, server):
         script_path = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                                    "devstack", "install.sh"))
@@ -96,14 +104,14 @@ class DevstackEngine(engine.Engine):
         if server.password:
             server.ssh.run("chpasswd", stdin="rally:%s" % server.password)
 
-    @utils.log_deploy_wrapper(LOG.info, _("Deploy devstack"))
+    @logging.log_deploy_wrapper(LOG.info, _("Deploy devstack"))
     def deploy(self):
         self.servers = self.get_provider().create_servers()
         devstack_repo = self.config.get("devstack_repo", DEVSTACK_REPO)
         devstack_branch = self.config.get("devstack_branch", DEVSTACK_BRANCH)
-        localrc = ""
-        for k, v in six.iteritems(self.localrc):
-            localrc += "%s=%s\n" % (k, v)
+        local_conf = "[[local|localrc]]\n"
+        for k, v in six.iteritems(self.local_conf):
+            local_conf += "%s=%s\n" % (k, v)
 
         for server in self.servers:
             self.deployment.add_resource(provider_name="DevstackEngine",
@@ -112,15 +120,15 @@ class DevstackEngine(engine.Engine):
             cmd = "/bin/sh -e -s %s %s" % (devstack_repo, devstack_branch)
             server.ssh.run(cmd, stdin=get_script("install.sh"))
             devstack_server = get_updated_server(server, user=DEVSTACK_USER)
-            devstack_server.ssh.run("cat > ~/devstack/localrc", stdin=localrc)
+            devstack_server.ssh.run("cat > ~/devstack/local.conf",
+                                    stdin=local_conf)
             devstack_server.ssh.run("~/devstack/stack.sh")
 
-        admin_endpoint = objects.Endpoint("http://%s:5000/v2.0/" %
-                                          self.servers[0].host, "admin",
-                                          self.localrc["ADMIN_PASSWORD"],
-                                          "admin",
-                                          consts.EndpointPermission.ADMIN)
-        return {"admin": admin_endpoint}
+        admin_credential = objects.Credential(
+            "http://%s:5000/v2.0/" % self.servers[0].host, "admin",
+            self.local_conf["ADMIN_PASSWORD"], "admin",
+            consts.EndpointPermission.ADMIN)
+        return {"admin": admin_credential}
 
     def cleanup(self):
         for resource in self.deployment.get_resources(type="credentials"):

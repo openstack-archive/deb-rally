@@ -27,8 +27,10 @@ class VerificationTestCase(test.TestCase):
             "id": 777,
             "uuid": "test_uuid",
             "failures": 0, "tests": 2, "errors": 0, "time": "0.54",
+            "expected_failures": 0,
             "details": {
                 "failures": 0, "tests": 2, "errors": 0, "time": "0.54",
+                "expected_failures": 0,
                 "test_cases": [
                     {"classname": "foo.Test",
                      "name": "foo_test[gate,negative]",
@@ -57,6 +59,11 @@ class VerificationTestCase(test.TestCase):
     def test_get(self, mock_verification_get):
         objects.Verification.get(self.db_obj["id"])
         mock_verification_get.assert_called_once_with(self.db_obj["id"])
+
+    @mock.patch("rally.common.objects.verification.db.verification_list")
+    def test_list(self, mock_verification_list):
+        objects.Verification.list()
+        mock_verification_list.assert_called_once_with(None)
 
     @mock.patch("rally.common.objects.verification.db.verification_delete")
     @mock.patch("rally.common.objects.verification.db.verification_create")
@@ -87,6 +94,8 @@ class VerificationTestCase(test.TestCase):
 
         expected_values = {"status": "finished"}
         expected_values.update(fake_results["total"])
+        # expected_failures should be merged with failures
+        expected_values.pop("expected_failures")
         mock_verification_update.assert_called_with(
             self.db_obj["uuid"], expected_values)
 

@@ -13,13 +13,14 @@
 # under the License.
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import exceptions
 from rally import osclients
 from rally.plugins.openstack.context.cleanup import manager as resource_manager
 from rally.plugins.openstack.scenarios.glance import utils as glance_utils
+from rally.plugins.openstack.scenarios.sahara import utils
 from rally.task import context
 
 
@@ -60,8 +61,9 @@ class SaharaImage(context.Context):
 
     def _create_image(self, hadoop_version, image_url, plugin_name, user,
                       user_name):
-        scenario = glance_utils.GlanceScenario({"user": user})
-        image_name = rutils.generate_random_name(prefix="rally_sahara_image_")
+        scenario = glance_utils.GlanceScenario(
+            {"user": user, "task": self.context["task"]})
+        image_name = self.generate_random_name()
         image = scenario._create_image(name=image_name,
                                        container_format="bare",
                                        image_location=image_url,
@@ -72,20 +74,21 @@ class SaharaImage(context.Context):
             image_id=image.id, new_tags=[plugin_name, hadoop_version])
         return image.id
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `Sahara Image`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `Sahara Image`"))
     def setup(self):
-        self.context["sahara_images"] = {}
+        utils.init_sahara_context(self)
+        self.context["sahara"]["images"] = {}
 
         # The user may want to use the existing image. In this case he should
         # make sure that the image is public and has all required metadata.
         image_uuid = self.config.get("image_uuid")
 
-        self.context["need_sahara_image_cleanup"] = not image_uuid
+        self.context["sahara"]["need_image_cleanup"] = not image_uuid
 
         if image_uuid:
             # Using the first user to check the existing image.
             user = self.context["users"][0]
-            clients = osclients.Clients(user["endpoint"])
+            clients = osclients.Clients(user["credential"])
 
             image = clients.glance().images.get(image_uuid)
 
@@ -96,7 +99,8 @@ class SaharaImage(context.Context):
 
             for user, tenant_id in rutils.iterate_per_tenants(
                     self.context["users"]):
-                self.context["tenants"][tenant_id]["sahara_image"] = image_id
+                self.context["tenants"][tenant_id]["sahara"]["image"] = (
+                    image_id)
         else:
             for user, tenant_id in rutils.iterate_per_tenants(
                     self.context["users"]):
@@ -108,12 +112,13 @@ class SaharaImage(context.Context):
                     user=user,
                     user_name=self.config["username"])
 
-                self.context["tenants"][tenant_id]["sahara_image"] = image_id
+                self.context["tenants"][tenant_id]["sahara"]["image"] = (
+                    image_id)
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `Sahara Image`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `Sahara Image`"))
     def cleanup(self):
 
         # TODO(boris-42): Delete only resources created by this context
-        if self.context["need_sahara_image_cleanup"]:
+        if self.context["sahara"]["need_image_cleanup"]:
             resource_manager.cleanup(names=["glance.images"],
                                      users=self.context.get("users", []))

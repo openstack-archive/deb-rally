@@ -20,6 +20,7 @@ from oslo_config import cfg
 
 from rally import exceptions
 from rally.plugins.openstack import scenario
+from rally.plugins.openstack.wrappers import cinder as cinder_wrapper
 from rally.task import atomic
 from rally.task import utils as bench_utils
 
@@ -52,8 +53,6 @@ CONF.register_opts(CINDER_BENCHMARK_OPTS, group=benchmark_group)
 class CinderScenario(scenario.OpenStackScenario):
     """Base class for Cinder scenarios with basic atomic actions."""
 
-    RESOURCE_NAME_PREFIX = "rally_volume_"
-
     @atomic.action_timer("cinder.list_volumes")
     def _list_volumes(self, detailed=True):
         """Returns user volumes list."""
@@ -80,9 +79,9 @@ class CinderScenario(scenario.OpenStackScenario):
             for i in range(sets):
                 metadata = {}
                 for j in range(set_size):
-                    key = self._generate_random_name()
+                    key = self.generate_random_name()
                     keys.append(key)
-                    metadata[key] = self._generate_random_name()
+                    metadata[key] = self.generate_random_name()
 
                 self.clients("cinder").volumes.set_metadata(volume, metadata)
             return keys
@@ -129,19 +128,18 @@ class CinderScenario(scenario.OpenStackScenario):
         :param kwargs: Other optional parameters to initialize the volume
         :returns: Created volume object
         """
-        kwargs["display_name"] = kwargs.get("display_name",
-                                            self._generate_random_name())
-
         if isinstance(size, dict):
             size = random.randint(size["min"], size["max"])
 
-        volume = self.clients("cinder").volumes.create(size, **kwargs)
+        client = cinder_wrapper.wrap(self._clients.cinder, self)
+        volume = client.create_volume(size, **kwargs)
+
         # NOTE(msdubov): It is reasonable to wait 5 secs before starting to
         #                check whether the volume is ready => less API calls.
         time.sleep(CONF.benchmark.cinder_volume_create_prepoll_delay)
         volume = bench_utils.wait_for(
             volume,
-            is_ready=bench_utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_create_timeout,
             check_interval=CONF.benchmark.cinder_volume_create_poll_interval
@@ -152,17 +150,15 @@ class CinderScenario(scenario.OpenStackScenario):
     def _update_volume(self, volume, **update_volume_args):
         """Update name and description for this volume
 
-        This atomic function updates volume display name and description
+        This atomic function updates volume information. The volume
+        display name is always changed, and additional update
+        arguments may also be specified.
 
         :param volume: volume object
         :param update_volume_args: dict, contains values to be updated.
         """
-        kwargs = {}
-        kwargs["display_name"] = update_volume_args.get(
-            "display_name", self._generate_random_name("_"))
-        kwargs["display_description"] = update_volume_args.get(
-            "display_description", self._generate_random_name("_"))
-        self.clients("cinder").volumes.update(volume, **kwargs)
+        client = cinder_wrapper.wrap(self._clients.cinder, self)
+        client.update_volume(volume, **update_volume_args)
 
     @atomic.action_timer("cinder.delete_volume")
     def _delete_volume(self, volume):
@@ -173,8 +169,10 @@ class CinderScenario(scenario.OpenStackScenario):
         :param volume: volume object
         """
         volume.delete()
-        bench_utils.wait_for_delete(
+        bench_utils.wait_for_status(
             volume,
+            ready_statuses=["deleted"],
+            check_deletion=True,
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_delete_timeout,
             check_interval=CONF.benchmark.cinder_volume_delete_poll_interval
@@ -200,7 +198,7 @@ class CinderScenario(scenario.OpenStackScenario):
         volume.extend(volume, new_size)
         volume = bench_utils.wait_for(
             volume,
-            is_ready=bench_utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_create_timeout,
             check_interval=CONF.benchmark.cinder_volume_create_poll_interval
@@ -222,13 +220,13 @@ class CinderScenario(scenario.OpenStackScenario):
                             ami, ari, aki, vhd, vmdk, raw, qcow2, vdi and iso
         :returns: Returns created image object
         """
-        resp, img = volume.upload_to_image(force, self._generate_random_name(),
+        resp, img = volume.upload_to_image(force, self.generate_random_name(),
                                            container_format, disk_format)
         # NOTE (e0ne): upload_to_image changes volume status to uploading so
         # we need to wait until it will be available.
         volume = bench_utils.wait_for(
             volume,
-            is_ready=bench_utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_create_timeout,
             check_interval=CONF.benchmark.cinder_volume_create_poll_interval
@@ -237,7 +235,7 @@ class CinderScenario(scenario.OpenStackScenario):
         image = self.clients("glance").images.get(image_id)
         image = bench_utils.wait_for(
             image,
-            is_ready=bench_utils.resource_is("active"),
+            ready_statuses=["active"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.glance_image_create_timeout,
             check_interval=CONF.benchmark.glance_image_create_poll_interval
@@ -258,15 +256,15 @@ class CinderScenario(scenario.OpenStackScenario):
         :param kwargs: Other optional parameters to initialize the volume
         :returns: Created snapshot object
         """
-        kwargs["display_name"] = kwargs.get("display_name",
-                                            self._generate_random_name())
         kwargs["force"] = force
-        snapshot = self.clients("cinder").volume_snapshots.create(volume_id,
-                                                                  **kwargs)
+
+        client = cinder_wrapper.wrap(self._clients.cinder, self)
+        snapshot = client.create_snapshot(volume_id, **kwargs)
+
         time.sleep(CONF.benchmark.cinder_volume_create_prepoll_delay)
         snapshot = bench_utils.wait_for(
             snapshot,
-            is_ready=bench_utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_create_timeout,
             check_interval=CONF.benchmark.cinder_volume_create_poll_interval
@@ -282,8 +280,10 @@ class CinderScenario(scenario.OpenStackScenario):
         :param snapshot: snapshot object
         """
         snapshot.delete()
-        bench_utils.wait_for_delete(
+        bench_utils.wait_for_status(
             snapshot,
+            ready_statuses=["deleted"],
+            check_deletion=True,
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_delete_timeout,
             check_interval=CONF.benchmark.cinder_volume_delete_poll_interval
@@ -299,7 +299,7 @@ class CinderScenario(scenario.OpenStackScenario):
         backup = self.clients("cinder").backups.create(volume_id, **kwargs)
         return bench_utils.wait_for(
             backup,
-            is_ready=bench_utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_create_timeout,
             check_interval=CONF.benchmark.cinder_volume_create_poll_interval
@@ -314,8 +314,10 @@ class CinderScenario(scenario.OpenStackScenario):
         :param backup: backup instance
         """
         backup.delete()
-        bench_utils.wait_for_delete(
+        bench_utils.wait_for_status(
             backup,
+            ready_statuses=["deleted"],
+            check_deletion=True,
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_delete_timeout,
             check_interval=CONF.benchmark.cinder_volume_delete_poll_interval
@@ -332,7 +334,7 @@ class CinderScenario(scenario.OpenStackScenario):
         restored_volume = self.clients("cinder").volumes.get(restore.volume_id)
         return bench_utils.wait_for(
             restored_volume,
-            is_ready=bench_utils.resource_is("available"),
+            ready_statuses=["available"],
             update_resource=bench_utils.get_from_manager(),
             timeout=CONF.benchmark.cinder_volume_create_timeout,
             check_interval=CONF.benchmark.cinder_volume_create_poll_interval

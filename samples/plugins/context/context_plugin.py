@@ -13,7 +13,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
-from rally.common import log as logging
+from rally.common import logging
 from rally import consts
 from rally import osclients
 from rally.task import context
@@ -58,7 +58,8 @@ class CreateFlavorContext(context.Context):
         """This method is called before the task start."""
         try:
             # use rally.osclients to get necessary client instance
-            nova = osclients.Clients(self.context["admin"]["endpoint"]).nova()
+            nova = osclients.Clients(
+                self.context["admin"]["credential"]).nova()
             # and then do what you need with this client
             self.context["flavor"] = nova.flavors.create(
                 # context settings are stored in self.config
@@ -77,7 +78,8 @@ class CreateFlavorContext(context.Context):
     def cleanup(self):
         """This method is called after the task finish."""
         try:
-            nova = osclients.Clients(self.context["admin"]["endpoint"]).nova()
+            nova = osclients.Clients(
+                self.context["admin"]["credential"]).nova()
             nova.flavors.delete(self.context["flavor"]["id"])
             LOG.debug("Flavor '%s' deleted" % self.context["flavor"]["id"])
         except Exception as e:

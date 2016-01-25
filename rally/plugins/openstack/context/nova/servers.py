@@ -13,7 +13,7 @@
 # under the License.
 
 from rally.common.i18n import _
-from rally.common import log as logging
+from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import osclients
@@ -70,14 +70,14 @@ class ServerGenerator(context.Context):
         "auto_assign_nic": False
     }
 
-    @rutils.log_task_wrapper(LOG.info, _("Enter context: `Servers`"))
+    @logging.log_task_wrapper(LOG.info, _("Enter context: `Servers`"))
     def setup(self):
         image = self.config["image"]
         flavor = self.config["flavor"]
         auto_nic = self.config["auto_assign_nic"]
         servers_per_tenant = self.config["servers_per_tenant"]
 
-        clients = osclients.Clients(self.context["users"][0]["endpoint"])
+        clients = osclients.Clients(self.context["users"][0]["credential"])
         image_id = types.ImageResourceType.transform(clients=clients,
                                                      resource_config=image)
         flavor_id = types.FlavorResourceType.transform(clients=clients,
@@ -87,10 +87,11 @@ class ServerGenerator(context.Context):
                 self.context["users"])):
             LOG.debug("Booting servers for user tenant %s "
                       % (user["tenant_id"]))
-            tenant = self.context["tenants"][tenant_id]
-            nova_scenario = nova_utils.NovaScenario({"user": user,
-                                                     "tenant": tenant,
-                                                     "iteration": iter_})
+            tmp_context = {"user": user,
+                           "tenant": self.context["tenants"][tenant_id],
+                           "task": self.context["task"],
+                           "iteration": iter_}
+            nova_scenario = nova_utils.NovaScenario(tmp_context)
 
             LOG.debug("Calling _boot_servers with image_id=%(image_id)s "
                       "flavor_id=%(flavor_id)s "
@@ -111,7 +112,7 @@ class ServerGenerator(context.Context):
             self.context["tenants"][tenant_id][
                 "servers"] = current_servers
 
-    @rutils.log_task_wrapper(LOG.info, _("Exit context: `Servers`"))
+    @logging.log_task_wrapper(LOG.info, _("Exit context: `Servers`"))
     def cleanup(self):
         resource_manager.cleanup(names=["nova.servers"],
                                  users=self.context.get("users", []))
