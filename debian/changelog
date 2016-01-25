@@ -1,3 +1,10 @@
+rally (0.2.0-1) UNRELEASED; urgency=medium
+
+  * New upstream release.
+  * Added myself as uploader.
+
+ -- Ondřej Nový <novy@ondrej.org>  Mon, 25 Jan 2016 14:41:56 -0500
+
 rally (0.1.1-1) unstable; urgency=medium
 
   * New upstream release:
