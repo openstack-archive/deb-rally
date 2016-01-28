@@ -2,13 +2,9 @@ Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Rally
 Source: https://github.com/openstack/rally.git
 
-Files: debian/*
-Copyright: 2012-2013, Thomas Goirand <zigo@debian.org>
-License: Apache-2.0
-
 Files: *
 Copyright: (c) 2012-2015, OpenStack Foundation
-           (c) 2013-2015, Mirantis INC
+           (c) 2013-2016, Mirantis INC
            (c) 2013-2015, HP
            (c) 2013-2015, Yahoo INC.
            (c) 2013-2015, HuaWei
@@ -25,6 +21,11 @@ Copyright: (c) 2012-2015, OpenStack Foundation
            (c) 2013-2015, Rackspace
            (c) 2013-2015, Red Hat
            (c) 2013-2015, VMWare
+License: Apache-2.0
+
+Files: debian/*
+Copyright: (c) 2012-2016, Thomas Goirand <zigo@debian.org>
+           (c) 2016, Ondřej Nový <novy@ondrej.org>
 License: Apache-2.0
 
 License: Apache-2.0
