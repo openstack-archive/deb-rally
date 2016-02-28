@@ -2,6 +2,7 @@ rally (0.2.0-1) UNRELEASED; urgency=medium
 
   * New upstream release.
   * Added myself as uploader.
+  * Fixed VCS URLs (https).
 
  -- Ondřej Nový <novy@ondrej.org>  Mon, 25 Jan 2016 14:41:56 -0500
 

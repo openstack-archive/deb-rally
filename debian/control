@@ -60,8 +60,8 @@ Build-Depends-Indep: python-babel,
                      testrepository,
 Standards-Version: 3.9.6
 Homepage: https://github.com/stackforge/rally
-Vcs-Browser: http://anonscm.debian.org/gitweb/?p=openstack/rally.git;a=summary
-Vcs-Git: git://anonscm.debian.org/openstack/rally.git
+Vcs-Browser: https://anonscm.debian.org/cgit/openstack/rally.git/
+Vcs-Git: https://anonscm.debian.org/git/openstack/rally.git
 
 Package: python-rally
 Section: python
