@@ -7,6 +7,7 @@ rally (0.2.0-2) UNRELEASED; urgency=medium
 
   [ Thomas Goirand ]
   * Added pt_BR.po debconf translation (Closes: #816954).
+  * Added de.po debconf translation (Closes: #818655).
 
  -- Thomas Goirand <zigo@debian.org>  Tue, 05 Apr 2016 10:52:29 +0200
 
