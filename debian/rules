@@ -3,7 +3,6 @@
 PYTHONS:=$(shell pyversions -vr)
 #PYTHON3S:=$(shell py3versions -vr)
 
-UPSTREAM_GIT = git://github.com/stackforge/rally.git
 
 include /usr/share/openstack-pkg-tools/pkgos.make
 export OSLO_PACKAGE_VERSION=$(VERSION)
