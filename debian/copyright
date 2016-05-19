@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Rally
-Source: git://github.com/stackforge/rally.git
+Source: https://github.com/openstack/rally.git
 
 Files: debian/*
 Copyright: 2012-2013, Thomas Goirand <zigo@debian.org>
