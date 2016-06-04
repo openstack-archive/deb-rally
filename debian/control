@@ -59,7 +59,7 @@ Build-Depends-Indep: python-alembic,
                      python-zaqarclient (>= 0.3.0),
                      subunit,
                      testrepository,
-Standards-Version: 3.9.6
+Standards-Version: 3.9.8
 Homepage: https://github.com/stackforge/rally
 Vcs-Browser: https://anonscm.debian.org/cgit/openstack/rally.git/
 Vcs-Git: https://anonscm.debian.org/git/openstack/rally.git
