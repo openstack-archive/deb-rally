@@ -1,3 +1,10 @@
+rally (0.3.3-1) UNRELEASED; urgency=medium
+
+  * New upstream release
+  * Fixed (build-)depends for this release.
+
+ -- Ondřej Nový <novy@ondrej.org>  Sat, 04 Jun 2016 22:46:50 +0200
+
 rally (0.2.0-1) unstable; urgency=medium
 
   [ Ondřej Nový ]
