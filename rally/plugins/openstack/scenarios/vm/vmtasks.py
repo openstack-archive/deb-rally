@@ -14,14 +14,20 @@
 #    under the License.
 
 import json
+import pkgutil
 
 from rally.common import logging
+from rally.common import sshutils
 from rally import consts
 from rally import exceptions
 from rally.plugins.openstack import scenario
 from rally.plugins.openstack.scenarios.vm import utils as vm_utils
+from rally.plugins.openstack.services import heat
+from rally.task import atomic
 from rally.task import types
 from rally.task import validation
+
+LOG = logging.getLogger(__name__)
 
 
 class VMTasks(vm_utils.VMScenario):
@@ -30,13 +36,10 @@ class VMTasks(vm_utils.VMScenario):
     def __init__(self, *args, **kwargs):
         super(VMTasks, self).__init__(*args, **kwargs)
 
-    @types.set(image=types.ImageResourceType,
-               flavor=types.FlavorResourceType)
+    @types.convert(image={"type": "glance_image"},
+                   flavor={"type": "nova_flavor"})
     @validation.image_valid_on_flavor("flavor", "image")
-    @logging.log_deprecated_args("Use `command' argument instead", "0.0.5",
-                                 ("script", "interpreter"), once=True)
-    @validation.file_exists("script", required=False)
-    @validation.valid_command("command", required=False)
+    @validation.valid_command("command")
     @validation.number("port", minval=1, maxval=65535, nullable=True,
                        integer_only=True)
     @validation.external_network_exists("floating_network")
@@ -47,8 +50,6 @@ class VMTasks(vm_utils.VMScenario):
     def boot_runcommand_delete(self, image, flavor,
                                username,
                                password=None,
-                               script=None,
-                               interpreter=None,
                                command=None,
                                volume_args=None,
                                floating_network=None,
@@ -56,20 +57,20 @@ class VMTasks(vm_utils.VMScenario):
                                use_floating_ip=True,
                                force_delete=False,
                                wait_for_ping=True,
+                               max_log_length=None,
                                **kwargs):
-        """Boot a server, run a script that outputs JSON, delete the server.
+        """Boot a server, run script specified in command and delete server.
 
         Example Script in samples/tasks/support/instance_dd_test.sh
+
+        The script to be executed is provided like command['remote_path'] or
+        command['local_path'] and interpreter in command['interpreter']
+        respectively.
 
         :param image: glance image name to use for the vm
         :param flavor: VM flavor name
         :param username: ssh username on server, str
         :param password: Password on SSH authentication
-        :param script: DEPRECATED. Use `command' instead. Script to run on
-            server, must output JSON mapping metric names to values (see the
-            sample script below)
-        :param interpreter: DEPRECATED. Use `command' instead. server's
-            interpreter to run the script
         :param command: Command-specifying dictionary that either specifies
             remote command path via `remote_path' (can be uploaded from a
             local file specified by `local_path`), an inline script via
@@ -143,13 +144,12 @@ class VMTasks(vm_utils.VMScenario):
         :param force_delete: whether to use force_delete for servers
         :param wait_for_ping: whether to check connectivity on server creation
         :param **kwargs: extra arguments for booting the server
+        :param max_log_length: The number of tail nova console-log lines user
+                               would like to retrieve
         :returns: dictionary with keys `data' and `errors':
                   data: dict, JSON output from the script
                   errors: str, raw data from the script's stderr stream
         """
-
-        if command is None and script and interpreter:
-            command = {"script_file": script, "interpreter": interpreter}
 
         if volume_args:
             volume = self._create_volume(volume_args["size"], imageRef=None)
@@ -179,14 +179,21 @@ class VMTasks(vm_utils.VMScenario):
                     "Command %(command)s has not output valid JSON: %(error)s."
                     " Output: %(output)s" % {
                         "command": command, "error": str(e), "output": out})
+        except (exceptions.TimeoutException,
+                exceptions.SSHTimeout):
+            console_logs = self._get_server_console_output(server,
+                                                           max_log_length)
+            LOG.debug("VM console logs:\n%s", console_logs)
+            raise
+
         finally:
             self._delete_server_with_fip(server, fip,
                                          force_delete=force_delete)
 
         return {"data": data, "errors": err}
 
-    @types.set(image=types.ImageResourceType,
-               flavor=types.FlavorResourceType)
+    @types.convert(image={"type": "glance_image"},
+                   flavor={"type": "nova_flavor"})
     @validation.number("port", minval=1, maxval=65535, nullable=True,
                        integer_only=True)
     @validation.valid_command("command")
@@ -204,3 +211,71 @@ class VMTasks(vm_utils.VMScenario):
 
         return self.boot_runcommand_delete(
             image=self.context["tenant"]["custom_image"]["id"], **kwargs)
+
+    @scenario.configure(context={"cleanup": ["nova", "heat"],
+                                 "keypair": {}, "network": {}})
+    def runcommand_heat(self, workload, template, files, parameters):
+        """Run workload on stack deployed by heat.
+
+        Workload can be either file or resource:
+
+        .. code-block: json
+
+            {"file": "/path/to/file.sh"}
+            {"resource": ["package.module", "workload.py"]}
+
+        Also it should contain "username" key.
+
+        Given file will be uploaded to `gate_node` and started. This script
+        should print `key` `value` pairs separated by colon. These pairs will
+        be presented in results.
+
+        Gate node should be accessible via ssh with keypair `key_name`, so
+        heat template should accept parameter `key_name`.
+
+        :param workload: workload to run
+        :param template: path to heat template file
+        :param files: additional template files
+        :param parameters: parameters for heat template
+        """
+        keypair = self.context["user"]["keypair"]
+        parameters["key_name"] = keypair["name"]
+        network = self.context["tenant"]["networks"][0]
+        parameters["router_id"] = network["router_id"]
+        self.stack = heat.main.Stack(self, self.task,
+                                     template, files=files,
+                                     parameters=parameters)
+        self.stack.create()
+        for output in self.stack.stack.outputs:
+            if output["output_key"] == "gate_node":
+                ip = output["output_value"]
+                break
+        ssh = sshutils.SSH(workload["username"], ip, pkey=keypair["private"])
+        ssh.wait()
+        script = workload.get("resource")
+        if script:
+            script = pkgutil.get_data(*script)
+        else:
+            script = open(workload["file"]).read()
+        ssh.execute("cat > /tmp/.rally-workload", stdin=script)
+        ssh.execute("chmod +x /tmp/.rally-workload")
+        with atomic.ActionTimer(self, "runcommand_heat.workload"):
+            status, out, err = ssh.execute(
+                "/tmp/.rally-workload",
+                stdin=json.dumps(self.stack.stack.outputs))
+        rows = []
+        for line in out.splitlines():
+            row = line.split(":")
+            if len(row) != 2:
+                raise exceptions.ScriptError("Invalid data '%s'" % line)
+            rows.append(row)
+        if not rows:
+            raise exceptions.ScriptError("No data returned")
+        self.add_output(
+            complete={"title": "Workload summary",
+                      "description": "Data generated by workload",
+                      "chart_plugin": "Table",
+                      "data": {
+                          "cols": ["key", "value"],
+                          "rows": rows}}
+        )

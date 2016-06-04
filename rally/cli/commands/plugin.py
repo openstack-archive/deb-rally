@@ -15,8 +15,6 @@
 
 from __future__ import print_function
 
-import textwrap
-
 from rally.cli import cliutils
 from rally.common.plugin import plugin
 from rally.common import utils
@@ -24,7 +22,7 @@ from rally import plugins
 
 
 class PluginCommands(object):
-    """Command allows to manage Rally plugins."""
+    """Set of commands that allow you to manage Rally plugins."""
 
     @staticmethod
     def _print_plugins_list(plugin_list):
@@ -41,7 +39,7 @@ class PluginCommands(object):
                    help="Plugin namespace.")
     @plugins.ensure_plugins_are_loaded
     def show(self, name, namespace=None):
-        """Show detailed information about Rally plugin."""
+        """Show detailed information about a Rally plugin."""
         name_lw = name.lower()
         all_plugins = plugin.Plugin.get_all(namespace=namespace)
         found = [p for p in all_plugins if name_lw in p.get_name().lower()]
@@ -65,12 +63,11 @@ class PluginCommands(object):
             print("MODULE\n\t%s" % plugin_info["module"])
             if plugin_info["description"]:
                 print("DESCRIPTION\n\t", end="")
-                print(textwrap.fill(plugin_info["description"],
-                                    subsequent_indent="\t"))
+                print("\n\t".join(plugin_info["description"].split("\n")))
             if plugin_info["parameters"]:
                 print("PARAMETERS")
                 rows = [utils.Struct(name=p["name"],
-                                     description="g%s\n" % p["doc"])
+                                     description="%s\n" % p["doc"])
                         for p in plugin_info["parameters"]]
                 cliutils.print_list(rows, fields=["name", "description"])
         else:
@@ -78,9 +75,10 @@ class PluginCommands(object):
             self._print_plugins_list(found)
 
     @cliutils.args("--name", dest="name", type=str,
-                   help="List only plugins that match passed name.")
-    @cliutils.args("--namespace", dest="namespace", type=str,
-                   help="List only plugins that are in specified namespace")
+                   help="List only plugins that match the given name.")
+    @cliutils.args(
+        "--namespace", dest="namespace", type=str,
+        help="List only plugins that are in the specified namespace.")
     @plugins.ensure_plugins_are_loaded
     def list(self, name=None, namespace=None):
         """List all Rally plugins that match name and namespace."""

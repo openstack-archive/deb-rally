@@ -387,11 +387,13 @@ class MainStatsTable(Table):
 class OutputChart(Chart):
     """Base class for charts related to scenario output."""
 
-    def __init__(self, workload_info,
-                 zipped_size=1000, title="", description=""):
+    def __init__(self, workload_info, zipped_size=1000,
+                 title="", description="", label="", axis_label=""):
         super(OutputChart, self).__init__(workload_info, zipped_size)
         self.title = title
         self.description = description
+        self.label = label
+        self.axis_label = axis_label
 
     def _map_iteration_values(self, iteration):
         return iteration
@@ -400,29 +402,152 @@ class OutputChart(Chart):
         return {"title": self.title,
                 "description": self.description,
                 "widget": self.widget,
-                "data": super(OutputChart, self).render()}
+                "data": super(OutputChart, self).render(),
+                "label": self.label,
+                "axis_label": self.axis_label}
 
 
 @plugin.configure(name="StackedArea")
 class OutputStackedAreaChart(OutputChart):
+    """Display results as stacked area.
+
+    This plugin processes additive data and displays it in HTML report
+    as stacked area with X axis bound to iteration number.
+    Complete output data is displayed as stacked area as well, without
+    any processing.
+
+    Keys "description", "label" and "axis_label" are optional.
+
+    Examples of using this plugin in Scenario, for saving output data:
+
+    .. code-block:: python
+
+        self.add_output(
+            additive={"title": "Additive data as stacked area",
+                      "description": "Iterations trend for foo and bar",
+                      "chart_plugin": "StackedArea",
+                      "data": [["foo", 12], ["bar", 34]]},
+            complete={"title": "Complete data as stacked area",
+                      "description": "Data is shown as stacked area, as-is",
+                      "chart_plugin": "StackedArea",
+                      "data": [["foo", [0, 5], [1, 42], [2, 15], [3, 7]],
+                               ["bar", [0, 2], [1, 1.3], [2, 5], [3, 9]]],
+                      "label": "Y-axis label text",
+                      "axis_label": "X-axis label text"})
+    """
 
     widget = "StackedArea"
+
+    def render(self):
+        result = super(OutputStackedAreaChart, self).render()
+
+        # NOTE(amaretskiy): transform to Table if there is a single iteration
+        if result["data"] and len(result["data"][0][1]) == 1:
+            rows = [[v[0], v[1][0][1]] for v in result["data"]]
+            result.update({"widget": "Table",
+                           "data": {"cols": ["Name", self.label or "Value"],
+                                    "rows": rows}})
+        return result
+
+
+@plugin.configure(name="Lines")
+class OutputLinesChart(OutputStackedAreaChart):
+    """Display results as generic chart with lines.
+
+    This plugin processes additive data and displays it in HTML report
+    as linear chart with X axis bound to iteration number.
+    Complete output data is displayed as linear chart as well, without
+    any processing.
+
+    Examples of using this plugin in Scenario, for saving output data:
+
+    .. code-block:: python
+
+        self.add_output(
+            additive={"title": "Additive data as stacked area",
+                      "description": "Iterations trend for foo and bar",
+                      "chart_plugin": "Lines",
+                      "data": [["foo", 12], ["bar", 34]]},
+            complete={"title": "Complete data as stacked area",
+                      "description": "Data is shown as stacked area, as-is",
+                      "chart_plugin": "Lines",
+                      "data": [["foo", [0, 5], [1, 42], [2, 15], [3, 7]],
+                               ["bar", [0, 2], [1, 1.3], [2, 5], [3, 9]]],
+                      "label": "Y-axis label text",
+                      "axis_label": "X-axis label text"})
+    """
+
+    widget = "Lines"
 
 
 @plugin.configure(name="Pie")
 class OutputAvgChart(OutputChart, AvgChart):
+    """Display results as pie, calculate average values for additive data.
+
+    This plugin processes additive data and calculate average values.
+    Both additive and complete data are displayed in HTML report as pie chart.
+
+    Examples of using this plugin in Scenario, for saving output data:
+
+    .. code-block:: python
+
+        self.add_output(
+            additive={"title": "Additive output",
+                      "description": ("Pie with average data "
+                                      "from all iterations values"),
+                      "chart_plugin": "Pie",
+                      "data": [["foo", 12], ["bar", 34], ["spam", 56]]},
+            complete={"title": "Complete output",
+                      "description": "Displayed as a pie, as-is",
+                      "chart_plugin": "Pie",
+                      "data": [["foo", 12], ["bar", 34], ["spam", 56]]})
+    """
 
     widget = "Pie"
 
 
 @plugin.configure(name="Table")
 class OutputTable(OutputChart, Table):
+    """Display complete output as table, can not be used for additive data.
+
+    Use this plugin for complete output data to display it in HTML report
+    as table. This plugin can not be used for additive data because it
+    does not contain any processing logic.
+
+    Examples of using this plugin in Scenario, for saving output data:
+
+    .. code-block:: python
+
+        self.add_output(
+            complete={"title": "Arbitrary Table",
+                      "description": "Just show columns and rows as-is",
+                      "chart_plugin": "Table",
+                      "data": {"cols": ["foo", "bar", "spam"],
+                               "rows": [["a row", 1, 2], ["b row", 3, 4],
+                                        ["c row", 5, 6]]}})
+    """
 
     widget = "Table"
 
 
 @plugin.configure(name="StatsTable")
 class OutputStatsTable(OutputTable):
+    """Calculate statistics for additive data and display it as table.
+
+    This plugin processes additive data and compose statistics that is
+    displayed as table in HTML report.
+
+    Examples of using this plugin in Scenario, for saving output data:
+
+    .. code-block:: python
+
+        self.add_output(
+            additive={"title": "Statistics",
+                      "description": ("Table with statistics generated "
+                                      "from all iterations values"),
+                      "chart_plugin": "StatsTable",
+                      "data": [["foo stat", 12], ["bar", 34], ["spam", 56]]})
+    """
 
     columns = ["Action", "Min (sec)", "Median (sec)", "90%ile (sec)",
                "95%ile (sec)", "Max (sec)", "Avg (sec)", "Count"]

@@ -118,11 +118,12 @@ class FakeServer(FakeResource):
 class FakeImage(FakeResource):
 
     def __init__(self, manager=None, id="image-id-0", min_ram=0,
-                 size=0, min_disk=0, name=None):
+                 size=0, min_disk=0, status="active", name=None):
         super(FakeImage, self).__init__(manager, id=id, name=name)
         self.min_ram = min_ram
         self.size = size
         self.min_disk = min_disk
+        self.status = status
         self.update = mock.MagicMock()
 
 
@@ -158,11 +159,12 @@ class FakeNetwork(FakeResource):
 
 class FakeFlavor(FakeResource):
 
-    def __init__(self, id="flavor-id-0", manager=None, ram=0, disk=0,
+    def __init__(self, id="flavor-id-0", manager=None, ram=0, disk=0, vcpus=1,
                  name="flavor-name-0"):
         super(FakeFlavor, self).__init__(manager, id=id)
         self.ram = ram
         self.disk = disk
+        self.vcpus = vcpus
         self.name = name
 
 
@@ -313,7 +315,7 @@ class FakeManager(object):
         self.resources_order = []
 
     def get(self, resource_uuid):
-        return self.cache.get(resource_uuid, None)
+        return self.cache.get(resource_uuid)
 
     def delete(self, resource_uuid):
         cached = self.get(resource_uuid)
@@ -348,7 +350,7 @@ class FakeServerManager(FakeManager):
         self.images = image_mgr or FakeImageManager()
 
     def get(self, resource_uuid):
-        server = self.cache.get(resource_uuid, None)
+        server = self.cache.get(resource_uuid)
         if server is not None:
             return server
         raise nova_exceptions.NotFound("Server %s not found" % (resource_uuid))
@@ -389,7 +391,7 @@ class FakeImageManager(FakeManager):
         super(FakeImageManager, self).__init__()
 
     def get(self, resource_uuid):
-        image = self.cache.get(resource_uuid, None)
+        image = self.cache.get(resource_uuid)
         if image is not None:
             return image
         raise exc.HTTPNotFound("Image %s not found" % (resource_uuid))

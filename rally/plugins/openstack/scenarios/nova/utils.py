@@ -801,10 +801,10 @@ class NovaScenario(scenario.OpenStackScenario):
         action_name = ("nova.create_%s_rules" % (rules_per_security_group *
                                                  len(security_groups)))
         with atomic.ActionTimer(self, action_name):
-            for i in range(len(security_groups)):
+            for i, security_group in enumerate(security_groups):
                 for j in range(rules_per_security_group):
                         self.clients("nova").security_group_rules.create(
-                            security_groups[i].id,
+                            security_group.id,
                             from_port=(i * rules_per_security_group + j + 1),
                             to_port=(i * rules_per_security_group + j + 1),
                             ip_protocol=ip_protocol,
@@ -892,3 +892,57 @@ class NovaScenario(scenario.OpenStackScenario):
         :param net_id: The nova-network ID to delete
         """
         return self.admin_clients("nova").networks.delete(net_id)
+
+    @atomic.action_timer("nova.list_flavors")
+    def _list_flavors(self, detailed=True, **kwargs):
+        """List all flavors.
+
+        :param kwargs: Optional additional arguments for flavor listing
+        :param detailed: True if the image listing
+                         should contain detailed information
+        :returns: flavors list
+        """
+        return self.clients("nova").flavors.list(detailed, **kwargs)
+
+    @atomic.action_timer("nova.list_agents")
+    def _list_agents(self, hypervisor=None):
+        """List all nova-agent builds.
+
+        :param hypervisor: The nova-hypervisor ID on which we need to list all
+                           the builds
+        :returns: Nova-agent build list
+        """
+        return self.admin_clients("nova").agents.list(hypervisor)
+
+    @atomic.action_timer("nova.list_aggregates")
+    def _list_aggregates(self):
+        """Returns list of all os-aggregates."""
+        return self.admin_clients("nova").aggregates.list()
+
+    @atomic.action_timer("nova.list_availbility_zones")
+    def _list_availability_zones(self, detailed=True):
+        """List availability-zones.
+
+        :param detailed: True if the availability-zone listing should contain
+                         detailed information
+        :returns: Availability-zone list
+        """
+        return self.admin_clients("nova").availability_zones.list(detailed)
+
+    @atomic.action_timer("nova.list_hosts")
+    def _list_hosts(self, zone=None):
+        """List nova hosts.
+
+        :param zone: List all hosts in the given nova availability-zone ID
+        :returns: Nova host list
+        """
+        return self.admin_clients("nova").hosts.list(zone)
+
+    @atomic.action_timer("nova.list_services")
+    def _list_services(self, host=None, binary=None):
+        """return all nova service details
+
+        :param host: List all nova services on host
+        :param binary: List all nova services matching  given binary
+        """
+        return self.admin_clients("nova").services.list(host, binary)

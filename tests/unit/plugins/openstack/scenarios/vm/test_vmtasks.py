@@ -15,7 +15,6 @@
 
 import mock
 
-from rally.common import logging
 from rally import exceptions
 from rally.plugins.openstack.scenarios.vm import vmtasks
 from tests.unit import test
@@ -39,21 +38,17 @@ class VMTasksTestCase(test.ScenarioTestCase):
             return_value=(0, "\"foo_out\"", "foo_err"))
 
     def test_boot_runcommand_delete(self):
-        with logging.LogCatcher(logging.LOG) as catcher:
-            self.scenario.boot_runcommand_delete(
-                "foo_image", "foo_flavor",
-                script="foo_script", interpreter="foo_interpreter",
-                username="foo_username",
-                password="foo_password",
-                use_floating_ip="use_fip",
-                floating_network="ext_network",
-                force_delete="foo_force",
-                volume_args={"size": 16},
-                foo_arg="foo_value")
-
-        catcher.assertInLogs(
-            "Use `command' argument instead (args `script', `interpreter' "
-            "deprecated in Rally v0.0.5)")
+        self.scenario.boot_runcommand_delete(
+            "foo_image", "foo_flavor",
+            command={"script_file": "foo_script",
+                     "interpreter": "foo_interpreter"},
+            username="foo_username",
+            password="foo_password",
+            use_floating_ip="use_fip",
+            floating_network="ext_network",
+            force_delete="foo_force",
+            volume_args={"size": 16},
+            foo_arg="foo_value")
 
         self.scenario._create_volume.assert_called_once_with(
             16, imageRef=None)
@@ -107,6 +102,36 @@ class VMTasksTestCase(test.ScenarioTestCase):
         self.scenario._delete_server_with_fip.assert_called_once_with(
             "foo_server", self.ip, force_delete=False)
 
+    def test_boot_runcommand_delete_command_timeouts(self):
+        self.scenario._run_command.side_effect = exceptions.SSHTimeout()
+        self.assertRaises(exceptions.SSHTimeout,
+                          self.scenario.boot_runcommand_delete,
+                          "foo_image", "foo_flavor", "foo_interpreter",
+                          "foo_script", "foo_username")
+        self.scenario._delete_server_with_fip.assert_called_once_with(
+            "foo_server", self.ip, force_delete=False)
+
+    def test_boot_runcommand_delete_ping_wait_timeouts(self):
+        self.scenario._wait_for_ping.side_effect = exceptions.TimeoutException(
+            resource_type="foo_resource",
+            resource_name="foo_name",
+            resource_id="foo_id",
+            desired_status="foo_desired_status",
+            resource_status="foo_resource_status")
+        exc = self.assertRaises(exceptions.TimeoutException,
+                                self.scenario.boot_runcommand_delete,
+                                "foo_image", "foo_flavor", "foo_interpreter",
+                                "foo_script", "foo_username",
+                                wait_for_ping=True)
+        self.assertEqual(exc.kwargs["resource_type"], "foo_resource")
+        self.assertEqual(exc.kwargs["resource_name"], "foo_name")
+        self.assertEqual(exc.kwargs["resource_id"], "foo_id")
+        self.assertEqual(exc.kwargs["desired_status"], "foo_desired_status")
+        self.assertEqual(exc.kwargs["resource_status"], "foo_resource_status")
+
+        self.scenario._delete_server_with_fip.assert_called_once_with(
+            "foo_server", self.ip, force_delete=False)
+
     @mock.patch("rally.plugins.openstack.scenarios.vm.vmtasks.json")
     def test_boot_runcommand_delete_json_fails(self, mock_json):
         mock_json.loads.side_effect = ValueError()
@@ -144,3 +169,33 @@ class VMTasksTestCase(test.ScenarioTestCase):
                 "script_file": "foo_script",
                 "interpreter": "bar_interpreter"}
         )
+
+    @mock.patch("rally.plugins.openstack.scenarios.vm.vmtasks.heat")
+    @mock.patch("rally.plugins.openstack.scenarios.vm.vmtasks.sshutils")
+    def test_runcommand_heat(self, mock_sshutils, mock_heat):
+        fake_ssh = mock.Mock()
+        fake_ssh.execute.return_value = [0, "key:val", ""]
+        mock_sshutils.SSH.return_value = fake_ssh
+        fake_stack = mock.Mock()
+        fake_stack.stack.outputs = [{"output_key": "gate_node",
+                                     "output_value": "ok"}]
+        mock_heat.main.Stack.return_value = fake_stack
+        context = {
+            "user": {"keypair": {"name": "name", "private": "pk"},
+                     "credential": "ok"},
+            "tenant": {"networks": [{"router_id": "1"}]}
+        }
+        scenario = vmtasks.VMTasks(context)
+        scenario.generate_random_name = mock.Mock(return_value="name")
+        scenario.add_output = mock.Mock()
+        workload = {"username": "admin",
+                    "resource": ["foo", "bar"]}
+        scenario.runcommand_heat(workload, "template",
+                                 {"file_key": "file_value"},
+                                 {"param_key": "param_value"})
+        expected = {"chart_plugin": "Table",
+                    "data": {"rows": [["key", "val"]],
+                             "cols": ["key", "value"]},
+                    "description": "Data generated by workload",
+                    "title": "Workload summary"}
+        scenario.add_output.assert_called_once_with(complete=expected)

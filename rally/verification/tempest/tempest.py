@@ -197,7 +197,7 @@ class Tempest(object):
             else:
                 python_interpreter = sys.executable
             try:
-                check_output([python_interpreter, "./tools/install_venv.py"],
+                check_output(["virtualenv", "-p", python_interpreter, ".venv"],
                              cwd=self.path())
                 # NOTE(kun): Using develop mode installation is for run
                 #            multiple tempest instance. However, dependency
@@ -297,13 +297,16 @@ class Tempest(object):
             shutil.rmtree(self.path())
 
     @logging.log_verification_wrapper(LOG.info, _("Run verification."))
-    def _prepare_and_run(self, set_name, regex, tests_file, concur):
+    def _prepare_and_run(self, set_name, regex, tests_file, concur, failing):
         if not self.is_configured():
             self.generate_config_file()
 
         testr_args = "--concurrency %d" % concur
 
-        if set_name:
+        if failing:
+            testr_args += " --failing"
+            set_name = "re-run-failed"
+        elif set_name:
             if set_name == "full":
                 pass
             elif set_name in consts.TempestTestsSets:
@@ -344,8 +347,8 @@ class Tempest(object):
                 "testr_args": testr_args,
                 "log_file": log_file or self.log_file_raw
             })
-        # Create all resources needed for Tempest before running tests.
-        # Once tests finish, all created resources will be deleted.
+        # Discover or create all resources needed for Tempest before running
+        # tests. Once tests finish, all created resources will be deleted.
         with config.TempestResourcesContext(
                 self.deployment, self.verification, self.config_file):
             # Run tests
@@ -354,23 +357,16 @@ class Tempest(object):
                                   env=self.env, shell=True)
 
     def discover_tests(self, pattern=""):
-        """Return a set of discovered tests which match given pattern."""
+        """Get a list of discovered tests.
 
+        :param pattern: Test name pattern which can be used to match
+        """
         cmd = [self.venv_wrapper, "testr", "list-tests", pattern]
         raw_results = subprocess.Popen(
             cmd, cwd=self.path(), env=self.env,
             stdout=subprocess.PIPE).communicate()[0]
-
-        tests = set()
-        for test in raw_results.split("\n"):
-            if test.startswith("tempest."):
-                index = test.find("[")
-                if index != -1:
-                    tests.add(test[:index])
-                else:
-                    tests.add(test)
-
-        return tests
+        index = raw_results.find("tempest.")
+        return raw_results[index:].split()
 
     def parse_results(self, log_file=None, expected_failures=None):
         """Parse subunit raw log file."""
@@ -392,8 +388,9 @@ class Tempest(object):
         else:
             self.verification.set_failed()
 
-    def verify(self, set_name, regex, tests_file, expected_failures, concur):
-        self._prepare_and_run(set_name, regex, tests_file, concur)
+    def verify(self, set_name, regex, tests_file, expected_failures, concur,
+               failing):
+        self._prepare_and_run(set_name, regex, tests_file, concur, failing)
         self._save_results(expected_failures=expected_failures)
 
     def import_results(self, set_name, log_file):

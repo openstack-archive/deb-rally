@@ -30,9 +30,11 @@ Contents
    overview
    install
    tutorial
+   cli/cli_reference
    user_stories
    plugins
    plugin/plugin_reference
+   db_migrations
    contribute
    gates
    feature_requests

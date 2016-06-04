@@ -13,9 +13,12 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from distutils import version
 import inspect
 import os
+import re
 
+from neutronclient import version as nc_version
 from oslo_config import cfg
 import requests
 import six
@@ -29,6 +32,7 @@ from rally.common import objects
 from rally.common import utils
 from rally import exceptions
 from rally import osclients
+from rally.plugins.openstack.wrappers import glance as glance_wrapper
 from rally.plugins.openstack.wrappers import network
 
 LOG = logging.getLogger(__name__)
@@ -40,10 +44,20 @@ IMAGE_OPTS = [
                help="CirrOS image URL"),
     cfg.StrOpt("disk_format",
                default="qcow2",
-               help="Image disk format"),
+               help="Image disk format to use when creating the image"),
     cfg.StrOpt("container_format",
                default="bare",
-               help="Image container formate")
+               help="Image container format to use when creating the image"),
+    cfg.StrOpt("name_regex",
+               default="^.*(cirros|testvm).*$",
+               help="Regular expression for name of an image to discover it "
+                    "in the cloud and use it for the tests. Note that when "
+                    "Rally is searching for the image, case insensitive "
+                    "matching is performed. Specify nothing ('name_regex =') "
+                    "if you want to disable discovering. In this case Rally "
+                    "will create needed resources by itself if the values "
+                    "for the corresponding config options are not specified "
+                    "in the Tempest config file")
 ]
 
 ROLE_OPTS = [
@@ -97,9 +111,9 @@ class TempestConfig(utils.RandomNameGeneratorMixin):
 
         self.conf = configparser.ConfigParser()
         self.conf.read(os.path.join(os.path.dirname(__file__), "config.ini"))
+
         self.image_name = parse.urlparse(
             CONF.image.cirros_img_url).path.split("/")[-1]
-
         self._download_cirros_image()
 
     def _download_cirros_image(self):
@@ -131,10 +145,17 @@ class TempestConfig(utils.RandomNameGeneratorMixin):
                         "HTTP error code %d.") % response.status_code
             raise exceptions.TempestConfigCreationFailure(msg)
 
-    def _get_service_url(self, service_type):
-        for service in self.keystone.auth_ref["serviceCatalog"]:
-            if self.clients.services().get(service["type"]) == service_type:
-                return service["endpoints"][0]["publicURL"]
+    def _get_service_url(self, service_name):
+        s_type = self._get_service_type_by_service_name(service_name)
+        available_endpoints = self.keystone.service_catalog.get_endpoints()
+        service_endpoints = available_endpoints.get(s_type, [])
+        for endpoint in service_endpoints:
+            # If endpoints were returned by Keystone API V2
+            if "publicURL" in endpoint:
+                return endpoint["publicURL"]
+            # If endpoints were returned by Keystone API V3
+            if endpoint["interface"] == "public":
+                return endpoint["url"]
 
     def _get_service_type_by_service_name(self, service_name):
         for s_type, s_name in six.iteritems(self.clients.services()):
@@ -182,11 +203,11 @@ class TempestConfig(utils.RandomNameGeneratorMixin):
         self.conf.set(section_name, "region",
                       self.credential["region_name"])
 
+        url_trailer = parse.urlparse(self.credential["auth_url"]).path
+        self.conf.set(section_name, "auth_version", url_trailer[1:3])
         self.conf.set(section_name, "uri", self.credential["auth_url"])
-        v2_url_trailer = parse.urlparse(self.credential["auth_url"]).path
         self.conf.set(section_name, "uri_v3",
-                      self.credential["auth_url"].replace(
-                          v2_url_trailer, "/v3"))
+                      self.credential["auth_url"].replace(url_trailer, "/v3"))
 
         self.conf.set(section_name, "admin_domain_name",
                       self.credential["admin_domain_name"])
@@ -221,10 +242,20 @@ class TempestConfig(utils.RandomNameGeneratorMixin):
             self, section_name="network-feature-enabled"):
         if "neutron" in self.available_services:
             neutronclient = self.clients.neutron()
-            ext_list = [ext["alias"] for ext in
-                        neutronclient.list_ext("/extensions")["extensions"]]
-            ext_list_str = ",".join(ext_list)
-            self.conf.set(section_name, "api_extensions", ext_list_str)
+            # NOTE(ylobankov): We need the if/else block here because
+            # the list_ext method has different number of arguments in
+            # different Neutron client versions.
+            cl_ver = nc_version.__version__
+            if version.StrictVersion(cl_ver) >= version.StrictVersion("4.1.0"):
+                # Neutron client version >= 4.1.0
+                extensions = neutronclient.list_ext(
+                    "extensions", "/extensions", retrieve_all=True)
+            else:
+                # Neutron client version < 4.1.0
+                extensions = neutronclient.list_ext("/extensions")
+            aliases = [ext["alias"] for ext in extensions["extensions"]]
+            aliases_str = ",".join(aliases)
+            self.conf.set(section_name, "api_extensions", aliases_str)
 
     def _configure_oslo_concurrency(self, section_name="oslo_concurrency"):
         lock_path = os.path.join(self.data_dir,
@@ -244,13 +275,15 @@ class TempestConfig(utils.RandomNameGeneratorMixin):
         self.conf.set(section_name, "img_file", self.image_name)
 
     def _configure_service_available(self, section_name="service_available"):
-        services = ["ceilometer", "cinder", "glance",
-                    "heat", "neutron", "nova", "sahara", "swift"]
+        services = ["ceilometer", "cinder", "glance", "heat",
+                    "ironic", "neutron", "nova", "sahara", "swift"]
         for service in services:
             # Convert boolean to string because ConfigParser fails
             # on attempt to get option with boolean value
             self.conf.set(section_name, service,
                           str(service in self.available_services))
+
+    def _configure_horizon_available(self, section_name="service_available"):
         horizon_url = ("http://" +
                        parse.urlparse(self.credential["auth_url"]).hostname)
         try:
@@ -302,6 +335,7 @@ class TempestResourcesContext(utils.RandomNameGeneratorMixin):
         self.conf_path = conf_path
         self.conf = configparser.ConfigParser()
         self.conf.read(conf_path)
+
         self.image_name = parse.urlparse(
             CONF.image.cirros_img_url).path.split("/")[-1]
 
@@ -312,12 +346,14 @@ class TempestResourcesContext(utils.RandomNameGeneratorMixin):
 
     def __enter__(self):
         self._create_tempest_roles()
-        self._configure_option("compute", "image_ref", self._create_image)
-        self._configure_option("compute", "image_ref_alt", self._create_image)
-        self._configure_option("compute",
-                               "flavor_ref", self._create_flavor, 64)
-        self._configure_option("compute",
-                               "flavor_ref_alt", self._create_flavor, 128)
+        self._configure_option("compute", "image_ref",
+                               self._discover_or_create_image)
+        self._configure_option("compute", "image_ref_alt",
+                               self._discover_or_create_image)
+        self._configure_option("compute", "flavor_ref",
+                               self._discover_or_create_flavor, 64)
+        self._configure_option("compute", "flavor_ref_alt",
+                               self._discover_or_create_flavor, 128)
         if "neutron" in self.available_services:
             neutronclient = self.clients.neutron()
             if neutronclient.list_networks(shared=True)["networks"]:
@@ -334,7 +370,7 @@ class TempestResourcesContext(utils.RandomNameGeneratorMixin):
                                        self._create_network_resources)
         if "heat" in self.available_services:
             self._configure_option("orchestration", "instance_type",
-                                   self._create_flavor, 64)
+                                   self._discover_or_create_flavor, 64)
 
         _write_config(self.conf_path, self.conf)
 
@@ -378,35 +414,64 @@ class TempestResourcesContext(utils.RandomNameGeneratorMixin):
             LOG.debug("Option '{opt}' is configured. "
                       "{opt} = {value}".format(opt=option, value=value))
         else:
-            LOG.debug("Option '{opt}' was configured manually "
+            LOG.debug("Option '{opt}' is already configured "
                       "in Tempest config file. {opt} = {opt_val}"
                       .format(opt=option, opt_val=option_value))
 
-    def _create_image(self):
-        glanceclient = self.clients.glance()
+    def _discover_or_create_image(self):
+        glance_wrap = glance_wrapper.wrap(self.clients.glance, self)
+
+        if CONF.image.name_regex:
+            LOG.debug("Trying to discover an image with name matching "
+                      "regular expression '%s'. Note that case insensitive "
+                      "matching is performed" % CONF.image.name_regex)
+            img_list = [img for img in self.clients.glance().images.list()
+                        if img.status.lower() == "active" and img.name]
+            for img in img_list:
+                if re.match(CONF.image.name_regex, img.name, re.IGNORECASE):
+                    LOG.debug("The following image discovered: '{0}'. Using "
+                              "image '{0}' for the tests".format(img.name))
+                    return img
+
+            LOG.debug("There is no image with name matching "
+                      "regular expression '%s'" % CONF.image.name_regex)
+
         params = {
             "name": self.generate_random_name(),
             "disk_format": CONF.image.disk_format,
             "container_format": CONF.image.container_format,
+            "image_location": os.path.join(_create_or_get_data_dir(),
+                                           self.image_name),
             "is_public": True
         }
         LOG.debug("Creating image '%s'" % params["name"])
-        image = glanceclient.images.create(**params)
+        image = glance_wrap.create_image(**params)
         self._created_images.append(image)
-        image.update(data=open(
-            os.path.join(_create_or_get_data_dir(), self.image_name), "rb"))
 
         return image
 
-    def _create_flavor(self, flv_ram):
+    def _discover_or_create_flavor(self, flv_ram):
         novaclient = self.clients.nova()
+
+        LOG.debug("Trying to discover a flavor with the following "
+                  "properties: RAM = %dMB, VCPUs = 1, disk = 0GB" % flv_ram)
+        for flavor in novaclient.flavors.list():
+            if (flavor.ram == flv_ram
+                    and flavor.vcpus == 1 and flavor.disk == 0):
+                LOG.debug("The following flavor discovered: '{0}'. Using "
+                          "flavor '{0}' for the tests".format(flavor.name))
+                return flavor
+
+        LOG.debug("There is no flavor with the mentioned properties")
+
         params = {
             "name": self.generate_random_name(),
             "ram": flv_ram,
             "vcpus": 1,
             "disk": 0
         }
-        LOG.debug("Creating flavor '%s'" % params["name"])
+        LOG.debug("Creating flavor '%s' with the following properties: RAM "
+                  "= %dMB, VCPUs = 1, disk = 0GB" % (params["name"], flv_ram))
         flavor = novaclient.flavors.create(**params)
         self._created_flavors.append(flavor)
 

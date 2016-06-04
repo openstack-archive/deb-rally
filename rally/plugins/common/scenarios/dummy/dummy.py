@@ -90,40 +90,51 @@ class Dummy(scenario.Scenario):
         rand = lambda n: [n, random.randint(1, random_range)]
         desc = "This is a description text for %s"
 
-        self.add_output(additive={"title": "Additive Stat Table",
-                                  "description": desc % "Additive Stat Table",
+        self.add_output(additive={"title": "Additive StatsTable",
+                                  "description": desc % "Additive StatsTable",
                                   "chart_plugin": "StatsTable",
                                   "data": [rand("foo stat"), rand("bar stat"),
                                            rand("spam stat")]})
 
-        self.add_output(additive={"title": "Additive Foo StackedArea",
-                                  "description": (
-                                      desc % "Additive Foo StackedArea"),
-                                  "chart_plugin": "StackedArea",
-                                  "data": [rand("foo 1"), rand("foo 2")]})
-
-        self.add_output(additive={"title": ("Additive Bar StackedArea "
+        self.add_output(additive={"title": ("Additive StackedArea "
                                             "(no description)"),
-                                  "description": "",
                                   "chart_plugin": "StackedArea",
-                                  "data": [rand("bar %d" % i)
-                                           for i in range(1, 7)]})
+                                  "data": [rand("foo %d" % i)
+                                           for i in range(1, 7)],
+                                  "label": "Measure this in Foo units"})
 
-        self.add_output(additive={"title": "Additive Spam Pie",
-                                  "description": desc % "Additive Spam Pie",
+        self.add_output(additive={"title": "Additive Lines",
+                                  "description": (
+                                      desc % "Additive Lines"),
+                                  "chart_plugin": "Lines",
+                                  "data": [rand("bar %d" % i)
+                                           for i in range(1, 4)],
+                                  "label": "Measure this in Bar units"})
+        self.add_output(additive={"title": "Additive Pie",
+                                  "description": desc % "Additive Pie",
                                   "chart_plugin": "Pie",
                                   "data": [rand("spam %d" % i)
                                            for i in range(1, 4)]},
-                        complete={"title": "Complete StackedArea",
+                        complete={"title": "Complete Lines",
+                                  "description": desc % "Complete Lines",
+                                  "chart_plugin": "Lines",
+                                  "data": [
+                                      [name, [rand(i) for i in range(1, 8)]]
+                                      for name in ("Foo", "Bar", "Spam")],
+                                  "label": "Measure this is some units",
+                                  "axis_label": ("This is a custom "
+                                                 "X-axis label")})
+        self.add_output(complete={"title": "Complete StackedArea",
                                   "description": desc % "Complete StackedArea",
                                   "chart_plugin": "StackedArea",
                                   "data": [
-                                      [name, [rand(i) for i in range(30)]]
-                                      for name in ("alpha", "beta", "gamma")]})
-
+                                      [name, [rand(i) for i in range(50)]]
+                                      for name in ("alpha", "beta", "gamma")],
+                                  "label": "Yet another measurement units",
+                                  "axis_label": ("This is a custom "
+                                                 "X-axis label")})
         self.add_output(
             complete={"title": "Complete Pie (no description)",
-                      "description": "",
                       "chart_plugin": "Pie",
                       "data": [rand("delta"), rand("epsilon"), rand("zeta"),
                                rand("theta"), rand("lambda"), rand("omega")]})
@@ -172,3 +183,16 @@ class Dummy(scenario.Scenario):
         """
         self._random_fail_emitter(exception_probability)
         self._random_fail_emitter(exception_probability)
+
+    @scenario.configure()
+    def dummy_random_action(self, actions_num=5, sleep_min=0, sleep_max=2):
+        """Sleep random time in dummy actions.
+
+        :param actions_num: int number of actions to generate
+        :param sleep_min: minimal time to sleep, numeric seconds
+        :param sleep_max: maximum time to sleep, numeric seconds
+        """
+        for idx in range(actions_num):
+            duration = random.uniform(sleep_min, sleep_max)
+            with atomic.ActionTimer(self, "action_%d" % idx):
+                utils.interruptable_sleep(duration)

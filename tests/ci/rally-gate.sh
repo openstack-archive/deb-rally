@@ -51,9 +51,12 @@ fi
 
 env
 set -o pipefail
-
 rally deployment use --deployment devstack
 rally deployment check
+source ~/.rally/openrc
+if rally deployment check | grep 'nova' | grep 'Available' > /dev/null; then
+    nova flavor-create m1.nano 42 64 0 1
+fi
 
 python $BASE/new/rally/tests/ci/osresources.py\
     --dump-list resources_at_start.txt

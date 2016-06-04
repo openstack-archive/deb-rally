@@ -63,6 +63,8 @@ re_raises = re.compile(
     r"\s:raise[^s] *.*$|\s:raises *:.*$|\s:raises *[^:]+$")
 re_db_import = re.compile(r"^from rally.common import db")
 re_objects_import = re.compile(r"^from rally.common import objects")
+re_old_type_class = re.compile(r"^\s*class \w+(\(\))?:")
+re_datetime_alias = re.compile(r"^(from|import) datetime(?!\s+as\s+dt$)")
 
 
 def skip_ignored_lines(func):
@@ -80,6 +82,9 @@ def skip_ignored_lines(func):
 def _parse_assert_mock_str(line):
     point = line.find(".assert_")
 
+    if point == -1:
+        point = line.find(".called_once_with(")
+
     if point != -1:
         end_pos = line[point:].find("(") + point
         return point, line[point + 1: end_pos], line[: point]
@@ -94,10 +99,12 @@ def check_assert_methods_from_mock(logical_line, physical_line, filename):
     N301 - base error number
     N302 - related to nonexistent "assert_called"
     N303 - related to nonexistent "assert_called_once"
+    N304 - related to nonexistent "called_once_with"
     """
 
     correct_names = ["assert_any_call", "assert_called_once_with",
-                     "assert_called_with", "assert_has_calls"]
+                     "assert_called_with", "assert_has_calls",
+                     "assert_not_called"]
     ignored_files = ["./tests/unit/test_hacking.py"]
 
     if filename.startswith("./tests") and filename not in ignored_files:
@@ -123,6 +130,11 @@ def check_assert_methods_from_mock(logical_line, physical_line, filename):
                                   "'assertEqual(1, %s.call_count)' "
                                   "or '%s.assert_called_once_with()'"
                                   " instead." % (obj_name, obj_name))
+                elif method_name == "called_once_with":
+                    error_number = "N304"
+                    custom_msg = ("Maybe, you should try to use "
+                                  "'%s.assert_called_once_with()'"
+                                  " instead." % obj_name)
                 else:
                     custom_msg = ("Correct 'assert_*' methods: '%s'."
                                   % "', '".join(correct_names))
@@ -466,6 +478,29 @@ def check_raises(physical_line, filename):
 
 
 @skip_ignored_lines
+def check_old_type_class(logical_line, physical_line, filename):
+    """Use new-style Python classes
+
+    N355
+    """
+
+    if re_old_type_class.search(logical_line):
+        yield (0, "N355 This class does not inherit from anything and thus "
+                  "will be an old-style class by default. Try to inherit from "
+                  "``object`` or another new-style class.")
+
+
+@skip_ignored_lines
+def check_datetime_alias(logical_line, physical_line, filename):
+    """Ensure using ``dt`` as alias for ``datetime``
+
+    N356
+    """
+    if re_datetime_alias.search(logical_line):
+        yield (0, "N356 Please use ``dt`` as alias for ``datetime``.")
+
+
+@skip_ignored_lines
 def check_db_imports_in_cli(logical_line, physical_line, filename):
     """Ensure that CLI modules do not use ``rally.common.db``
 
@@ -489,7 +524,7 @@ def check_objects_imports_in_cli(logical_line, physical_line, filename):
             or filename == "./rally/cli/commands/show.py"):
         return
     if re_objects_import.search(logical_line):
-        yield (0, "N360 CLI modules do not allow to work with "
+        yield (0, "N361 CLI modules do not allow to work with "
                   "`rally.common.objects``.")
 
 
@@ -510,5 +545,7 @@ def factory(register):
     register(check_dict_formatting_in_string)
     register(check_using_unicode)
     register(check_raises)
+    register(check_datetime_alias)
     register(check_db_imports_in_cli)
     register(check_objects_imports_in_cli)
+    register(check_old_type_class)

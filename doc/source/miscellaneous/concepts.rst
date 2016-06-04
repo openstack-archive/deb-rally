@@ -81,28 +81,28 @@ Note that inside each scenario configuration, the benchmark scenario is actually
 Developer's view
 ^^^^^^^^^^^^^^^^
 
-From the developer's perspective, a benchmark scenario is a method marked by a **@scenario** decorator and placed in a class that inherits from the base `Scenario <https://github.com/openstack/rally/blob/master/rally/benchmark/scenarios/base.py#L40>`_ class and located in some subpackage of `rally.task.scenarios <https://github.com/openstack/rally/tree/master/rally/benchmark/scenarios>`_. There may be arbitrary many benchmark scenarios in a scenario class; each of them should be referenced to (in the task configuration file) as *ScenarioClassName.method_name*.
+From the developer's perspective, a benchmark scenario is a method marked by a **@configure** decorator and placed in a class that inherits from the base `Scenario <https://github.com/openstack/rally/blob/0.1/rally/task/scenario.py#L94>`_. There may be arbitrary many benchmark scenarios in a scenario class; each of them should be referenced to (in the task configuration file) as *ScenarioClassName.method_name*.
 
 In a toy example below, we define a scenario class *MyScenario* with one benchmark scenario *MyScenario.scenario*. This benchmark scenario tests the performance of a sequence of 2 actions, implemented via private methods in the same class. Both methods are marked with the **@atomic_action_timer** decorator. This allows Rally to handle those actions in a special way and, after benchmarks complete, show runtime statistics not only for the whole scenarios, but for separate actions as well.
 
 .. code-block:: python
 
-    from rally.task.scenarios import base
-    from rally.task import utils
+    from rally.task import atomic
+    from rally.task import scenario
 
 
-    class MyScenario(base.Scenario):
+    class MyScenario(scenario.Scenario):
         """My class that contains benchmark scenarios."""
 
-        @base.atomic_action_timer("action_1")
+        @atomic.action_timer("action_1")
         def _action_1(self, **kwargs):
             """Do something with the cloud."""
 
-        @base.atomic_action_timer("action_2")
+        @atomic.action_timer("action_2")
         def _action_2(self, **kwargs):
             """Do something with the cloud."""
 
-        @base.scenario()
+        @scenario.configure()
         def scenario(self, **kwargs):
             self._action_1()
             self._action_2()
@@ -169,7 +169,7 @@ Also, all scenario runners can be provided (again, through the **"runner"** sect
 Developer's view
 ^^^^^^^^^^^^^^^^
 
-It is possible to extend Rally with new Scenario Runner types, if needed. Basically, each scenario runner should be implemented as a subclass of the base `ScenarioRunner <https://github.com/openstack/rally/blob/master/rally/benchmark/runner.py#L113>`_ class and located in the `rally.plugins.common.runners package <https://github.com/openstack/rally/tree/master/rally/plugins/common/runners>`_. The interface each scenario runner class should support is fairly easy:
+It is possible to extend Rally with new Scenario Runner types, if needed. Basically, each scenario runner should be implemented as a subclass of the base `ScenarioRunner <https://github.com/openstack/rally/blob/master/rally/task/runner.py>`_ class and located in the `rally.plugins.common.runners package <https://github.com/openstack/rally/tree/master/rally/plugins/common/runners>`_. The interface each scenario runner class should support is fairly easy:
 
 .. code-block:: python
 
@@ -265,7 +265,7 @@ In the example below, the **"users" context** specifies that the *"NovaServers.b
 Developer's view
 ^^^^^^^^^^^^^^^^
 
-From the developer's view, contexts management is implemented via **Context classes**. Each context type that can be specified in the task configuration file corresponds to a certain subclass of the base [https://github.com/openstack/rally/blob/master/rally/benchmark/context.py **Context**] class. Every context class should implement a fairly simple **interface**:
+From the developer's view, contexts management is implemented via **Context classes**. Each context type that can be specified in the task configuration file corresponds to a certain subclass of the base [https://github.com/openstack/rally/blob/master/rally/task/context.py **Context**] class. Every context class should implement a fairly simple **interface**:
 
 .. code-block:: python
 
@@ -319,7 +319,7 @@ Consequently, the algorithm of initiating the contexts can be roughly seen as fo
 
 - where the order of contexts in which they are set up depends on the value of their *order* attribute. Contexts with lower *order* have higher priority: *1xx* contexts are reserved for users-related stuff (e.g. users/tenants creation, roles assignment etc.), *2xx* - for quotas etc.
 
-The *hidden* attribute defines whether the context should be a *hidden* one. **Hidden contexts** cannot be configured by end-users through the task configuration file as shown above, but should be specified by a benchmark scenario developer through a special *@base.scenario(context={...})* decorator. Hidden contexts are typically needed to satisfy some specific benchmark scenario-specific needs, which don't require the end-user's attention. For example, the hidden **"cleanup" context** (:mod:`rally.plugins.openstack.context.cleanup.context`) is used to make generic cleanup after running benchmark. So user can't change
+The *hidden* attribute defines whether the context should be a *hidden* one. **Hidden contexts** cannot be configured by end-users through the task configuration file as shown above, but should be specified by a benchmark scenario developer through a special *@scenario.configure(context={...})* decorator. Hidden contexts are typically needed to satisfy some specific benchmark scenario-specific needs, which don't require the end-user's attention. For example, the hidden **"cleanup" context** (:mod:`rally.plugins.openstack.context.cleanup`) is used to make generic cleanup after running benchmark. So user can't change
 it configuration via task and break his cloud.
 
 If you want to dive deeper, also see the context manager (:mod:`rally.task.context`) class that actually implements the algorithm described above.

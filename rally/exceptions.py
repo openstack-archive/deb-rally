@@ -16,9 +16,6 @@
 import six
 
 from rally.common.i18n import _
-from rally.common import logging
-
-LOG = logging.getLogger(__name__)
 
 
 class RallyException(Exception):
@@ -241,3 +238,11 @@ class MultipleMatchesFound(RallyException):
 
 class TempestConfigCreationFailure(RallyException):
     msg_fmt = _("Unable to create Tempest config file: %(message)s")
+
+
+class SSHTimeout(RallyException):
+    pass
+
+
+class SSHError(RallyException):
+    pass

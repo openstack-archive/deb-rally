@@ -125,7 +125,7 @@ class MethodClassTestCase(test.TestCase):
     @testtools.skipIf(sys.version_info > (2, 9), "Problems with access to "
                                                  "class from <locals>")
     def test_method_class_for_class_level_method(self):
-        class A:
+        class A(object):
             def m(self):
                 pass
         self.assertEqual(A, utils.get_method_class(A.m))
@@ -265,6 +265,19 @@ class RandomNameTestCase(test.TestCase):
          "bad": ("rally_abcd_efgh", "rally_abcd!efg_12345678",
                  "rally_", "rally__", "rally_abcdefgh_",
                  "rally_abcdefghi_12345678", "foo", "foo_abcdefgh_abcdefgh")},
+        {"task_id": "abcd1234",
+         "good": ("rally_abcd1234_abcdefgh", "rally_abcd1234_abcd1234",
+                  "rally_abcd1234_AbCdEf12"),
+         "bad": ("rally_12345678_abcdefgh", "rally_12345678_abcd1234",
+                 "rally_abcd1234_", "rally_abcd1234_!!!!!!!!",
+                 "rally_ABCD1234_abcdefgh")},
+        {"task_id": "abcd1234",
+         "exact": False,
+         "good": ("rally_abcd1234_abcdefghfoo", "rally_abcd1234_abcdefgh",
+                  "rally_abcd1234_abcdefgh-bar",
+                  "rally_abcd1234_abcdefgh+!@$"),
+         "bad": ("rally_abcd1234_", "rally_abcd1234_!!!!!!!!",
+                 "rally_abcd1234_abcdefg")},
         {"fmt": "][*_XXX_XXX",
          "chars": "abc(.*)",
          "good": ("][*_abc_abc", "][*_abc_((("),
@@ -275,80 +288,89 @@ class RandomNameTestCase(test.TestCase):
          "bad": ("rally-abcdefgh-abcdefgh", "abc-test-abc-test",
                  "abcd_test_abc_test", "abc-test-abcd-test")})
     @ddt.unpack
-    def test_name_matches_pattern(self, good=(), bad=(),
-                                  fmt="rally_XXXXXXXX_XXXXXXXX",
-                                  chars=string.ascii_letters + string.digits):
+    def test_cls_name_matches_object(
+            self, good=(), bad=(), fmt="rally_XXXXXXXX_XXXXXXXX",
+            chars=string.ascii_letters + string.digits, task_id=None,
+            exact=True):
+        class FakeNameGenerator(utils.RandomNameGeneratorMixin):
+            RESOURCE_NAME_FORMAT = fmt
+            RESOURCE_NAME_ALLOWED_CHARACTERS = chars
+            task = {"uuid": task_id or "fakeuuid"}
+
         for name in good:
             self.assertTrue(
-                utils.name_matches_pattern(name, fmt, chars),
-                "%s unexpectedly didn't match resource_name_format" % name)
+                FakeNameGenerator.name_matches_object(name, task_id, exact),
+                "%(name)s unexpectedly didn't match RESOURCE_NAME_FORMAT "
+                "%(fmt)s with exact=%(exact)s" %
+                {"name": name, "fmt": fmt, "exact": exact})
 
         for name in bad:
             self.assertFalse(
-                utils.name_matches_pattern(name, fmt, chars),
-                "%s unexpectedly matched resource_name_format" % name)
+                FakeNameGenerator.name_matches_object(name, task_id, exact),
+                "%(name)s unexpectedly matched RESOURCE_NAME_FORMAT %(fmt)s "
+                "with exact=%(exact)s" %
+                {"name": name, "fmt": fmt, "exact": exact})
 
-    @mock.patch("rally.common.utils.name_matches_pattern",
-                return_value=True)
-    def test_name_matches_object(self, mock_name_matches_pattern):
+    def test_name_matches_object(self):
         name = "foo"
-        self.assertTrue(
-            utils.name_matches_object(name, utils.RandomNameGeneratorMixin))
-        mock_name_matches_pattern.assert_called_once_with(
-            name,
-            utils.RandomNameGeneratorMixin.RESOURCE_NAME_FORMAT,
-            utils.RandomNameGeneratorMixin.RESOURCE_NAME_ALLOWED_CHARACTERS)
+        obj = mock.Mock()
+        self.assertTrue(utils.name_matches_object(name, obj))
+        obj.name_matches_object.assert_called_once_with(name)
 
-    @mock.patch("rally.common.utils.name_matches_pattern",
-                return_value=False)
-    def test_name_matches_object_identical_list(self,
-                                                mock_name_matches_pattern):
+    def test_name_matches_object_kwargs(self):
+        name = "foo"
+        obj = mock.Mock()
+        self.assertTrue(utils.name_matches_object(name, obj, task_id="taskid",
+                                                  exact=False))
+        obj.name_matches_object.assert_called_once_with(name, task_id="taskid",
+                                                        exact=False)
+
+    def test_name_matches_object_identical_list(self):
         class One(utils.RandomNameGeneratorMixin):
-            pass
+            name_matches_object = mock.Mock(return_value=False)
 
         class Two(utils.RandomNameGeneratorMixin):
-            pass
+            name_matches_object = mock.Mock(return_value=False)
 
         name = "foo"
         self.assertFalse(utils.name_matches_object(name, One, Two))
-        mock_name_matches_pattern.assert_called_once_with(
-            name,
-            One.RESOURCE_NAME_FORMAT,
-            One.RESOURCE_NAME_ALLOWED_CHARACTERS)
+        # ensure that exactly one of the two objects is checked
+        self.assertItemsEqual(
+            One.name_matches_object.call_args_list +
+            Two.name_matches_object.call_args_list,
+            [mock.call(name)])
 
-    @mock.patch("rally.common.utils.name_matches_pattern",
-                return_value=False)
-    def test_name_matches_object_differing_list(self,
-                                                mock_name_matches_pattern):
+    def test_name_matches_object_differing_list(self):
         class One(utils.RandomNameGeneratorMixin):
-            pass
+            name_matches_object = mock.Mock(return_value=False)
 
         class Two(utils.RandomNameGeneratorMixin):
             RESOURCE_NAME_FORMAT = "foo_XXX_XXX"
+            name_matches_object = mock.Mock(return_value=False)
 
         class Three(utils.RandomNameGeneratorMixin):
             RESOURCE_NAME_ALLOWED_CHARACTERS = "12345"
+            name_matches_object = mock.Mock(return_value=False)
 
         class Four(utils.RandomNameGeneratorMixin):
             RESOURCE_NAME_FORMAT = "bar_XXX_XXX"
             RESOURCE_NAME_ALLOWED_CHARACTERS = "abcdef"
+            name_matches_object = mock.Mock(return_value=False)
 
         classes = (One, Two, Three, Four)
         name = "foo"
         self.assertFalse(utils.name_matches_object(name, *classes))
-        calls = [mock.call(name, cls.RESOURCE_NAME_FORMAT,
-                           cls.RESOURCE_NAME_ALLOWED_CHARACTERS)
-                 for cls in classes]
-        mock_name_matches_pattern.assert_has_calls(calls, any_order=True)
+        for cls in classes:
+            cls.name_matches_object.assert_called_once_with(name)
 
-    def test_name_matches_pattern_identity(self):
+    def test_cls_name_matches_object_identity(self):
         generator = utils.RandomNameGeneratorMixin()
         generator.task = {"uuid": "faketask"}
 
-        self.assertTrue(utils.name_matches_pattern(
-            generator.generate_random_name(),
-            generator.RESOURCE_NAME_FORMAT,
-            generator.RESOURCE_NAME_ALLOWED_CHARACTERS))
+        self.assertTrue(generator.name_matches_object(
+            generator.generate_random_name()))
+        self.assertTrue(utils.RandomNameGeneratorMixin.name_matches_object(
+            generator.generate_random_name()))
 
     def test_name_matches_object_identity(self):
         generator = utils.RandomNameGeneratorMixin()

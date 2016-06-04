@@ -16,8 +16,8 @@ from rally.common.i18n import _
 from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
-from rally.plugins.openstack.context.cleanup import manager as resource_manager
-from rally.plugins.openstack.scenarios.glance import utils as glance_utils
+from rally import osclients
+from rally.plugins.openstack.wrappers import glance as glance_wrapper
 from rally.task import context
 
 
@@ -78,8 +78,10 @@ class ImageGenerator(context.Context):
         for user, tenant_id in rutils.iterate_per_tenants(
                 self.context["users"]):
             current_images = []
-            glance_scenario = glance_utils.GlanceScenario(
-                {"user": user, "task": self.context["task"]})
+            clients = osclients.Clients(
+                user["credential"],
+                api_info=self.context["config"].get("api_versions"))
+            glance_wrap = glance_wrapper.wrap(clients.glance, self)
 
             kwargs = self.config.get("image_args", {})
             if self.config.get("min_ram") is not None:
@@ -97,9 +99,9 @@ class ImageGenerator(context.Context):
                 elif image_name:
                     cur_name = image_name
                 else:
-                    cur_name = None
+                    cur_name = self.generate_random_name()
 
-                image = glance_scenario._create_image(
+                image = glance_wrap.create_image(
                     image_container, image_url, image_type,
                     name=cur_name, **kwargs)
                 current_images.append(image.id)
@@ -108,6 +110,11 @@ class ImageGenerator(context.Context):
 
     @logging.log_task_wrapper(LOG.info, _("Exit context: `Images`"))
     def cleanup(self):
-        # TODO(boris-42): Delete only resources created by this context
-        resource_manager.cleanup(names=["glance.images"],
-                                 users=self.context.get("users", []))
+        for user, tenant_id in rutils.iterate_per_tenants(
+                self.context["users"]):
+            clients = osclients.Clients(
+                user["credential"],
+                api_info=self.context["config"].get("api_versions"))
+            glance_wrap = glance_wrapper.wrap(clients.glance, self)
+            for image in self.context["tenants"][tenant_id].get("images", []):
+                glance_wrap.delete_image(glance_wrap.get_image(image))

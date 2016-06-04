@@ -11,16 +11,20 @@
 #    under the License.
 
 
+import ddt
 import mock
 
 from rally.plugins.common.scenarios.dummy import dummy
 from tests.unit import test
 
 
+DUMMY = "rally.plugins.common.scenarios.dummy.dummy."
+
+
+@ddt.ddt
 class DummyTestCase(test.TestCase):
 
-    @mock.patch("rally.plugins.common.scenarios.dummy.dummy.utils."
-                "interruptable_sleep")
+    @mock.patch(DUMMY + "utils.interruptable_sleep")
     def test_dummy(self, mock_interruptable_sleep):
         scenario = dummy.Dummy(test.get_test_context())
         scenario.sleep_between = mock.MagicMock()
@@ -28,8 +32,7 @@ class DummyTestCase(test.TestCase):
         scenario.dummy(sleep=10)
         mock_interruptable_sleep.assert_called_once_with(10)
 
-    @mock.patch("rally.plugins.common.scenarios.dummy.dummy.utils."
-                "interruptable_sleep")
+    @mock.patch(DUMMY + "utils.interruptable_sleep")
     def test_dummy_exception(self, mock_interruptable_sleep):
         scenario = dummy.Dummy(test.get_test_context())
 
@@ -51,7 +54,7 @@ class DummyTestCase(test.TestCase):
                               scenario.dummy_exception_probability,
                               exception_probability=1)
 
-    @mock.patch("rally.plugins.common.scenarios.dummy.dummy.random")
+    @mock.patch(DUMMY + "random")
     def test_dummy_output(self, mock_random):
         mock_random.randint.side_effect = lambda min_, max_: max_
         desc = "This is a description text for %s"
@@ -64,43 +67,54 @@ class DummyTestCase(test.TestCase):
             expected = {
                 "additive": [
                     {"chart_plugin": "StatsTable",
-                     "data": [[s + " stat", exp]
+                     "data": [["%s stat" % s, exp]
                               for s in ("foo", "bar", "spam")],
-                     "title": "Additive Stat Table",
-                     "description": desc % "Additive Stat Table"},
+                     "description": desc % "Additive StatsTable",
+                     "title": "Additive StatsTable"},
                     {"chart_plugin": "StackedArea",
-                     "data": [["foo 1", exp], ["foo 2", exp]],
-                     "title": "Additive Foo StackedArea",
-                     "description": desc % "Additive Foo StackedArea"},
-                    {"chart_plugin": "StackedArea",
-                     "data": [["bar %d" % i, exp] for i in range(1, 7)],
-                     "title": "Additive Bar StackedArea (no description)",
-                     "description": ""},
+                     "data": [["foo %i" % i, exp] for i in range(1, 7)],
+                     "label": "Measure this in Foo units",
+                     "title": "Additive StackedArea (no description)"},
+                    {"chart_plugin": "Lines",
+                     "data": [["bar %i" % i, exp] for i in range(1, 4)],
+                     "description": desc % "Additive Lines",
+                     "label": "Measure this in Bar units",
+                     "title": "Additive Lines"},
                     {"chart_plugin": "Pie",
-                     "data": [["spam %d" % i, exp] for i in range(1, 4)],
-                     "title": "Additive Spam Pie",
-                     "description": desc % "Additive Spam Pie"}],
+                     "data": [["spam %i" % i, exp] for i in range(1, 4)],
+                     "description": desc % "Additive Pie",
+                     "title": "Additive Pie"}],
                 "complete": [
-                    {"data": [["alpha", [[i, exp] for i in range(30)]],
-                              ["beta", [[i, exp] for i in range(30)]],
-                              ["gamma", [[i, exp] for i in range(30)]]],
-                     "title": "Complete StackedArea",
+                    {"axis_label": "This is a custom X-axis label",
+                     "chart_plugin": "Lines",
+                     "data": [["Foo", [[i, exp] for i in range(1, 8)]],
+                              ["Bar", [[i, exp] for i in range(1, 8)]],
+                              ["Spam", [[i, exp] for i in range(1, 8)]]],
+                     "description": desc % "Complete Lines",
+                     "label": "Measure this is some units",
+                     "title": "Complete Lines"},
+                    {"axis_label": "This is a custom X-axis label",
+                     "chart_plugin": "StackedArea",
+                     "data": [["alpha", [[i, exp] for i in range(50)]],
+                              ["beta", [[i, exp] for i in range(50)]],
+                              ["gamma", [[i, exp] for i in range(50)]]],
                      "description": desc % "Complete StackedArea",
-                     "chart_plugin": "StackedArea"},
-                    {"data": [["delta", exp], ["epsilon", exp], ["zeta", exp],
-                              ["theta", exp], ["lambda", exp], ["omega", exp]],
-                     "title": "Complete Pie (no description)",
-                     "description": "",
-                     "chart_plugin": "Pie"},
-                    {"data": {
-                        "cols": ["mu column", "xi column", "pi column",
-                                 "tau column", "chi column"],
-                        "rows": [
-                            [r + " row", exp, exp, exp, exp]
-                            for r in ("iota", "nu", "rho", "phi", "psi")]},
-                     "title": "Complete Table",
+                     "label": "Yet another measurement units",
+                     "title": "Complete StackedArea"},
+                    {"chart_plugin": "Pie",
+                     "data": [[s, exp] for s in ("delta", "epsilon", "zeta",
+                                                 "theta", "lambda", "omega")],
+                     "title": "Complete Pie (no description)"},
+                    {"chart_plugin": "Table",
+                     "data": {"cols": ["%s column" % s
+                                       for s in ("mu", "xi", "pi",
+                                                 "tau", "chi")],
+                              "rows": [["%s row" % s, exp, exp, exp, exp]
+                                       for s in ("iota", "nu", "rho",
+                                                 "phi", "psi")]},
                      "description": desc % "Complete Table",
-                     "chart_plugin": "Table"}]}
+                     "title": "Complete Table"}]}
+
         self.assertEqual(expected, scenario._output)
 
     def test_dummy_dummy_with_scenario_output(self):
@@ -121,3 +135,29 @@ class DummyTestCase(test.TestCase):
             self.assertRaises(KeyError,
                               scenario.dummy_random_fail_in_atomic,
                               exception_probability=1)
+
+    @ddt.data({},
+              {"actions_num": 5, "sleep_min": 0, "sleep_max": 2},
+              {"actions_num": 7, "sleep_min": 1.23, "sleep_max": 4.56},
+              {"actions_num": 1, "sleep_max": 4.56},
+              {"sleep_min": 1})
+    @ddt.unpack
+    @mock.patch(DUMMY + "random")
+    @mock.patch(DUMMY + "utils.interruptable_sleep")
+    def test_dummy_random_action(self, mock_interruptable_sleep, mock_random,
+                                 **kwargs):
+        mock_random.uniform.side_effect = range(100)
+
+        scenario = dummy.Dummy(test.get_test_context())
+        scenario.dummy_random_action(**kwargs)
+        actions_num = kwargs.get("actions_num", 5)
+        calls = [mock.call(i) for i in range(actions_num)]
+        self.assertEqual(calls, mock_interruptable_sleep.mock_calls)
+
+        calls = [mock.call(kwargs.get("sleep_min", 0),
+                           kwargs.get("sleep_max", 2))
+                 for i in range(actions_num)]
+        self.assertEqual(calls, mock_random.uniform.mock_calls)
+        for i in range(actions_num):
+            self._test_atomic_action_timer(scenario.atomic_actions(),
+                                           "action_%d" % i)

@@ -82,16 +82,14 @@ class TempestConfigTestCase(test.TestCase):
         self.assertRaises(exceptions.TempestConfigCreationFailure,
                           self.tempest_conf._download_cirros_image)
 
-    def test__get_service_url(self):
-        self.tempest_conf.keystone.auth_ref = {
-            "serviceCatalog": [
-                {
-                    "name": "test_service",
-                    "type": "test_service_type",
-                    "endpoints": [{"publicURL": "test_url"}]
-                }
-            ]
-        }
+    @ddt.data({"publicURL": "test_url"},
+              {"interface": "public", "url": "test_url"})
+    def test__get_service_url(self, endpoint):
+        mock_catalog = mock.MagicMock()
+        mock_catalog.get_endpoints.return_value = {
+            "test_service_type": [endpoint]}
+
+        self.tempest_conf.keystone.service_catalog = mock_catalog
         self.tempest_conf.clients.services.return_value = {
             "test_service_type": "test_service"}
         self.assertEqual(
@@ -150,6 +148,7 @@ class TempestConfigTestCase(test.TestCase):
             ("admin_tenant_name", CREDS["admin"]["username"]),
             ("admin_domain_name", CREDS["admin"]["admin_domain_name"]),
             ("region", CREDS["admin"]["region_name"]),
+            ("auth_version", "v2"),
             ("uri", CREDS["admin"]["auth_url"]),
             ("uri_v3", CREDS["admin"]["auth_url"].replace("/v2.0/", "/v3")),
             ("disable_ssl_certificate_validation",
@@ -191,7 +190,11 @@ class TempestConfigTestCase(test.TestCase):
         for item in expected:
             self.assertIn(item, result)
 
-    def test__configure_network_feature_enabled(self):
+    @ddt.data({}, {"version": "4.1.0", "args": ("extensions", "/extensions"),
+                   "kwargs": {"retrieve_all": True}})
+    @ddt.unpack
+    def test__configure_network_feature_enabled(
+            self, version="4.0.0", args=("/extensions",), kwargs={}):
         self.tempest_conf.available_services = ["neutron"]
         client = self.tempest_conf.clients.neutron()
         client.list_ext.return_value = {
@@ -202,7 +205,9 @@ class TempestConfigTestCase(test.TestCase):
             ]
         }
 
+        mock.patch("neutronclient.version.__version__", version).start()
         self.tempest_conf._configure_network_feature_enabled()
+        client.list_ext.assert_called_once_with(*args, **kwargs)
         self.assertEqual(self.tempest_conf.conf.get(
             "network-feature-enabled", "api_extensions"),
             "dvr,extra_dhcp_opt,extraroute")
@@ -250,28 +255,35 @@ class TempestConfigTestCase(test.TestCase):
         for item in expected:
             self.assertIn(item, result)
 
-    @mock.patch("requests.get", return_value=mock.MagicMock(status_code=200))
-    def test__configure_service_available(self, mock_get):
+    def test__configure_service_available(self):
         available_services = ("nova", "cinder", "glance", "sahara")
         self.tempest_conf.available_services = available_services
         self.tempest_conf._configure_service_available()
+
+        expected = (
+            ("neutron", "False"), ("heat", "False"), ("nova", "True"),
+            ("swift", "False"), ("cinder", "True"), ("sahara", "True"),
+            ("glance", "True"), ("ceilometer", "False"))
+        result = self.tempest_conf.conf.items("service_available")
+        for item in expected:
+            self.assertIn(item, result)
+
+    @mock.patch("requests.get", return_value=mock.MagicMock(status_code=200))
+    def test__configure_horizon_available(self, mock_get):
+        self.tempest_conf._configure_horizon_available()
 
         expected_horizon_url = "http://test"
         expected_timeout = CONF.openstack_client_http_timeout
         mock_get.assert_called_once_with(expected_horizon_url,
                                          timeout=expected_timeout)
-        expected = (
-            ("neutron", "False"), ("heat", "False"), ("nova", "True"),
-            ("swift", "False"), ("cinder", "True"), ("sahara", "True"),
-            ("glance", "True"), ("horizon", "True"), ("ceilometer", "False"))
-        result = self.tempest_conf.conf.items("service_available")
-        for item in expected:
-            self.assertIn(item, result)
+        self.assertEqual(
+            self.tempest_conf.conf.get(
+                "service_available", "horizon"), "True")
 
     @mock.patch("requests.get", return_value=mock.MagicMock(status_code=404))
-    def test__configure_service_available_horizon_not_available(
+    def test__configure_horizon_not_available(
             self, mock_get):
-        self.tempest_conf._configure_service_available()
+        self.tempest_conf._configure_horizon_available()
         self.assertEqual(
             self.tempest_conf.conf.get(
                 "service_available", "horizon"), "False")
@@ -279,7 +291,7 @@ class TempestConfigTestCase(test.TestCase):
     @mock.patch("requests.get", side_effect=requests.Timeout())
     def test__configure_service_available_horizon_request_timeout(
             self, mock_get):
-        self.tempest_conf._configure_service_available()
+        self.tempest_conf._configure_horizon_available()
         self.assertEqual(
             self.tempest_conf.conf.get(
                 "service_available", "horizon"), "False")
@@ -390,20 +402,55 @@ class TempestResourcesContextTestCase(test.TestCase):
         result = self.context.conf.get("compute", "flavor_ref")
         self.assertEqual("id1", result)
 
-    @mock.patch("six.moves.builtins.open")
-    def test__create_image(self, mock_open):
+    @mock.patch("rally.plugins.openstack.wrappers.glance.wrap")
+    def test__discover_or_create_image_when_image_exists(self, mock_wrap):
         client = self.context.clients.glance()
-        client.images.create.side_effect = [fakes.FakeImage(id="id1")]
+        client.images.list.return_value = [fakes.FakeImage(name="CirrOS",
+                                                           status="active")]
+        image = self.context._discover_or_create_image()
+        self.assertEqual("CirrOS", image.name)
+        self.assertEqual(0, len(self.context._created_images))
 
-        image = self.context._create_image()
-        self.assertEqual("id1", image.id)
-        self.assertEqual("id1", self.context._created_images[0].id)
+    # @mock.patch("six.moves.builtins.open")
+    # def test__discover_or_create_image(self, mock_wrap, mock_open):
+    #     client = self.context.clients.glance()
+    #     client.images.create.side_effect = [fakes.FakeImage(id="id1")]
 
-    def test__create_flavor(self):
+    #     image = self.context._discover_or_create_image()
+    #     self.assertEqual("id1", image.id)
+    #     self.assertEqual("id1", self.context._created_images[0].id)
+
+    @mock.patch("rally.plugins.openstack.wrappers.glance.wrap")
+    def test__discover_or_create_image(self, mock_wrap):
+        client = mock_wrap.return_value
+
+        image = self.context._discover_or_create_image()
+        self.assertEqual(image, client.create_image.return_value)
+        self.assertEqual(self.context._created_images[0],
+                         client.create_image.return_value)
+        mock_wrap.assert_called_once_with(self.context.clients.glance,
+                                          self.context)
+        client.create_image.assert_called_once_with(
+            container_format=CONF.image.container_format,
+            image_location=mock.ANY,
+            disk_format=CONF.image.disk_format,
+            name=mock.ANY,
+            is_public=True)
+
+    def test__discover_or_create_flavor_when_flavor_exists(self):
+        client = self.context.clients.nova()
+        client.flavors.list.return_value = [fakes.FakeFlavor(id="id1", ram=64,
+                                                             vcpus=1, disk=0)]
+
+        flavor = self.context._discover_or_create_flavor(64)
+        self.assertEqual("id1", flavor.id)
+        self.assertEqual(0, len(self.context._created_flavors))
+
+    def test__discover_or_create_flavor(self):
         client = self.context.clients.nova()
         client.flavors.create.side_effect = [fakes.FakeFlavor(id="id1")]
 
-        flavor = self.context._create_flavor(64)
+        flavor = self.context._discover_or_create_flavor(64)
         self.assertEqual("id1", flavor.id)
         self.assertEqual("id1", self.context._created_flavors[0].id)
 

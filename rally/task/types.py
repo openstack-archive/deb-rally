@@ -21,11 +21,17 @@ import re
 
 import requests
 
+from rally.common.i18n import _
+from rally.common import logging
+from rally.common.plugin import plugin
 from rally import exceptions
 from rally import osclients
 from rally.task import scenario
 
+LOG = logging.getLogger(__name__)
 
+
+@logging.log_deprecated("Use types.convert() instead", "0.3.2", once=True)
 def set(**kwargs):
     """Decorator to define resource transformation(s) on scenario parameters.
 
@@ -36,6 +42,60 @@ def set(**kwargs):
     def wrapper(func):
         func._meta_setdefault("preprocessors", {})
         func._meta_get("preprocessors").update(kwargs)
+        return func
+    return wrapper
+
+
+def _get_preprocessor_loader(plugin_name):
+    """Get a class that loads a preprocessor class.
+
+    This returns a class with a single class method, ``transform``,
+    which, when called, finds a plugin and defers to its ``transform``
+    class method. This is necessary because ``convert()`` is called as
+    a decorator at import time, but we cannot be confident that the
+    ResourceType plugins may not be loaded yet. (In fact, since
+    ``convert()`` is used to decorate plugins, we can be confident
+    that not all plugins are loaded when it is called.)
+
+    This permits us to defer plugin searching until the moment when
+    ``preprocess()`` calls the various preprocessors, at which point
+    we can be certain that all plugins have been loaded and finding
+    them by name will work.
+    """
+    # NOTE(stpierre): This technically doesn't work, because
+    # ResourceType subclasses aren't plugins (yet)
+    def transform(cls, *args, **kwargs):
+        plug = ResourceType.get(plugin_name)
+        return plug.transform(*args, **kwargs)
+
+    return type("PluginLoader_%s" % plugin_name,
+                (object,),
+                {"transform": classmethod(transform)})
+
+
+def convert(**kwargs):
+    """Decorator to define resource transformation(s) on scenario parameters.
+
+    This will eventually replace set(). For the time being, set()
+    should be preferred.
+
+    The ``kwargs`` passed as arguments are used to map a key in the
+    scenario config to the resource type plugin used to perform a
+    transformation on the value of the key. For instance:
+
+        @types.convert(image={"type": "glance_image"})
+
+    This would convert the ``image`` key in the scenario configuration
+    to a Glance image by using the ``glance_image`` resource
+    plugin. Currently ``type`` is the only recognized key, but others
+    may be added in the future.
+    """
+    preprocessors = dict([(k, _get_preprocessor_loader(v["type"]))
+                          for k, v in kwargs.items()])
+
+    def wrapper(func):
+        func._meta_setdefault("preprocessors", {})
+        func._meta_get("preprocessors").update(preprocessors)
         return func
     return wrapper
 
@@ -65,7 +125,21 @@ def preprocess(name, context, args):
     return processed_args
 
 
-class ResourceType(object):
+class ResourceType(plugin.Plugin):
+
+    @classmethod
+    @abc.abstractmethod
+    def transform(cls, clients, resource_config):
+        """Transform the resource.
+
+        :param clients: openstack admin client handles
+        :param resource_config: scenario config of resource
+
+        :returns: transformed value of resource
+        """
+
+
+class DeprecatedResourceType(object):
 
     @classmethod
     @abc.abstractmethod
@@ -199,9 +273,24 @@ def _name_from_id(resource_config, resources, typename):
     return obj_from_id(resource_config, resources, typename).name
 
 
-class FlavorResourceType(ResourceType):
+def log_deprecated_resource_type(func):
+    """Decorator that logs use of deprecated resource type classes.
+
+    This should only be used on the transform() function.
+    """
+    def inner(cls, clients, resource_config):
+        LOG.warning(_("%s is deprecated in Rally v0.3.2; use the "
+                      "equivalent resource plugin name instead") %
+                    cls.__name__)
+        return func(cls, clients, resource_config)
+
+    return inner
+
+
+class FlavorResourceType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Transform the resource config to id.
 
@@ -219,9 +308,10 @@ class FlavorResourceType(ResourceType):
         return resource_id
 
 
-class EC2FlavorResourceType(ResourceType):
+class EC2FlavorResourceType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Transform the resource config to name.
 
@@ -243,9 +333,10 @@ class EC2FlavorResourceType(ResourceType):
         return resource_name
 
 
-class ImageResourceType(ResourceType):
+class ImageResourceType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Transform the resource config to id.
 
@@ -264,9 +355,10 @@ class ImageResourceType(ResourceType):
         return resource_id
 
 
-class EC2ImageResourceType(ResourceType):
+class EC2ImageResourceType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Transform the resource config to EC2 id.
 
@@ -296,9 +388,10 @@ class EC2ImageResourceType(ResourceType):
         return resource_ec2_id
 
 
-class VolumeTypeResourceType(ResourceType):
+class VolumeTypeResourceType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Transform the resource config to id.
 
@@ -317,9 +410,10 @@ class VolumeTypeResourceType(ResourceType):
         return resource_id
 
 
-class NeutronNetworkResourceType(ResourceType):
+class NeutronNetworkResourceType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Transform the resource config to id.
 
@@ -342,9 +436,10 @@ class NeutronNetworkResourceType(ResourceType):
                 name=resource_config.get("name")))
 
 
-class FilePathOrUrlType(ResourceType):
+class FilePathOrUrlType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Check whether file exists or url available.
 
@@ -368,9 +463,10 @@ class FilePathOrUrlType(ResourceType):
                 "Url error %s (%s)" % (path, ex))
 
 
-class FileType(ResourceType):
+class FileType(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Return content of the file by its path.
 
@@ -384,9 +480,10 @@ class FileType(ResourceType):
             return f.read()
 
 
-class FileTypeDict(ResourceType):
+class FileTypeDict(DeprecatedResourceType):
 
     @classmethod
+    @log_deprecated_resource_type
     def transform(cls, clients, resource_config):
         """Return the dictionary of items with file path and file content.
 

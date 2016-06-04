@@ -16,6 +16,7 @@
 import abc
 
 from oslo_config import cfg
+from six.moves.urllib import parse
 
 from rally.cli import envutils
 from rally.common.i18n import _
@@ -94,9 +95,12 @@ class OSClient(plugin.Plugin):
         # version is a string object.
         # For those clients which doesn't accept string value(for example
         # zaqarclient), this method should be overridden.
-        return str(version
+        version = (version
                    or self.api_info.get(self.get_name(), {}).get("version")
                    or self._meta_get("default_version"))
+        if version is not None:
+            version = str(version)
+        return version
 
     @classmethod
     def get_supported_versions(cls):
@@ -144,17 +148,17 @@ class OSClient(plugin.Plugin):
         return keystone(*args, **kwargs)
 
     def _get_session(self, auth=None, endpoint=None):
-        endpoint = endpoint or self._get_endpoint()
-
         from keystoneclient.auth import token_endpoint
         from keystoneclient import session as ks_session
 
-        kc = self.keystone()
         if auth is None:
+            endpoint = endpoint or self._get_endpoint()
+            kc = self.keystone()
             auth = token_endpoint.Token(endpoint, kc.auth_token)
 
-        return ks_session.Session(auth=auth, verify=self.credential.insecure,
-                                  timeout=CONF.openstack_client_http_timeout)
+        return ks_session.Session(
+            auth=auth, verify=not self.credential.insecure,
+            timeout=CONF.openstack_client_http_timeout)
 
     def _get_endpoint(self, service_type=None):
         kc = self.keystone()
@@ -167,7 +171,10 @@ class OSClient(plugin.Plugin):
     def _get_auth_info(self, user_key="username",
                        password_key="password",
                        auth_url_key="auth_url",
-                       project_name_key="project_id"
+                       project_name_key="project_id",
+                       domain_name_key="domain_name",
+                       user_domain_name_key="user_domain_name",
+                       project_domain_name_key="project_domain_name"
                        ):
         kw = {
             user_key: self.credential.username,
@@ -176,6 +183,15 @@ class OSClient(plugin.Plugin):
         }
         if project_name_key:
             kw.update({project_name_key: self.credential.tenant_name})
+
+        if "v2.0" not in self.credential.auth_url:
+            kw.update({
+                domain_name_key: self.credential.domain_name})
+            kw.update({
+                user_domain_name_key: self.credential.user_domain_name})
+            kw.update({
+                project_domain_name_key: self.credential.project_domain_name})
+
         return kw
 
     @abc.abstractmethod
@@ -196,29 +212,69 @@ class OSClient(plugin.Plugin):
         return super(OSClient, cls).get(name, namespace)
 
 
-@configure("keystone")
+@configure("keystone", supported_versions=("2", "3"))
 class Keystone(OSClient):
+
     def keystone(self, *args, **kwargs):
         raise exceptions.RallyException(_("Method 'keystone' is restricted "
                                           "for keystoneclient. :)"))
 
-    @staticmethod
-    def _create_keystone_client(args):
-        from keystoneclient import discover as keystone_discover
-        discover = keystone_discover.Discover(**args)
-        for version_data in discover.version_data():
-            version = version_data["version"]
-            if version[0] <= 2:
-                from keystoneclient.v2_0 import client as keystone_v2
-                return keystone_v2.Client(**args)
-            elif version[0] == 3:
-                from keystoneclient.v3 import client as keystone_v3
-                return keystone_v3.Client(**args)
-        raise exceptions.RallyException("Failed to discover keystone version "
-                                        "for url %(auth_url)s.", **args)
+    def _create_keystone_client(self, args, version=None):
+        from keystoneclient.auth import identity
+        from keystoneclient import client
+        auth_arg_list = [
+            "username", "project_name", "tenant_name", "auth_url",
+            "password",
+        ]
+        # NOTE(bigjools): If forcing a v2.0 URL then you cannot specify
+        # domain-related info, or the service discovery will fail.
+        if "v2.0" not in args["auth_url"] and version != "2":
+            auth_arg_list.extend(
+                ["user_domain_name", "domain_name", "project_domain_name"])
+        auth_args = {key: args.get(key) for key in auth_arg_list}
+        auth = identity.Password(**auth_args)
+        session = self._get_session(auth=auth)
+        args["session"] = session
+        # NOTE(bigjools): When using sessions, keystoneclient no longer
+        # does any pre-auth and calling client.authenticate() with
+        # sessions is deprecated (it's still possible to call it but if
+        # endpoint is defined it'll crash). We're forcing that pre-auth
+        # here because the use of the service_catalog depends on doing
+        # this. Also note that while the API has got the
+        # endpoints.list() equivalent, there is no service_type in that
+        # list which is why we need to ensure service_catalog is still
+        # present.
+        auth_ref = auth.get_access(session)
+        ks = client.Client(version=version, **args)
+        ks.auth_ref = auth_ref
+        return ks
 
-    def create_client(self):
-        """Return keystone client."""
+    def _remove_url_version(self):
+        """Remove any version from the auth_url.
+
+        The keystone Client code requires that auth_url be the root url
+        if a version override is used.
+        """
+        url = parse.urlparse(self.credential.auth_url)
+        # NOTE(bigjools): This assumes that non-versioned URLs have no
+        # path component at all.
+        parts = (url.scheme, url.netloc, "/", url.params, url.query,
+                 url.fragment)
+        return parse.urlunparse(parts)
+
+    def create_client(self, version=None):
+        """Return a keystone client.
+
+        :param version: Keystone API version, can be one of:
+            ("2", "3")
+
+        If this object was constructed with a version in the api_info
+        then that will be used unless the version parameter is passed.
+        """
+        # Use the version in the api_info if provided, otherwise fall
+        # back to the passed version (which may be None, in which case
+        # keystoneclient chooses).
+        version = self.choose_version(version)
         new_kw = {
             "timeout": CONF.openstack_client_http_timeout,
             "insecure": self.credential.insecure,
@@ -226,10 +282,9 @@ class Keystone(OSClient):
         }
         kw = self.credential.to_dict()
         kw.update(new_kw)
-        client = self._create_keystone_client(kw)
-        if client.auth_ref is None:
-            client.authenticate()
-        return client
+        if version is not None:
+            kw["auth_url"] = self._remove_url_version()
+        return self._create_keystone_client(kw, version=version)
 
 
 @configure("nova", default_version="2", default_service_type="compute")
@@ -328,7 +383,7 @@ class Heat(OSClient):
         return client
 
 
-@configure("cinder", default_version="1", default_service_type="volume",
+@configure("cinder", default_version="2", default_service_type="volumev2",
            supported_versions=["1", "2"])
 class Cinder(OSClient):
     def create_client(self, version=None, service_type=None):
@@ -442,6 +497,7 @@ class Sahara(OSClient):
         client = sahara.Client(
             self.choose_version(version),
             service_type=self.choose_service_type(service_type),
+            insecure=self.credential.insecure,
             **self._get_auth_info(password_key="api_key",
                                   project_name_key="project_name"))
 
@@ -699,6 +755,8 @@ class Clients(object):
             for stype in available_services.keys():
                 if stype in consts.ServiceType:
                     services_data[stype] = consts.ServiceType[stype]
+                else:
+                    services_data[stype] = "__unknown__"
             self.cache["services_data"] = services_data
 
         return self.cache["services_data"]

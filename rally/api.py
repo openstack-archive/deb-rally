@@ -80,13 +80,17 @@ class Deployment(object):
         # TODO(akscram): Check that the deployment have got a status that
         #                is equal to "*->finished" or "deploy->inconsistent".
         deployment = objects.Deployment.get(deployment)
-        deployer = deploy_engine.Engine.get_engine(
-            deployment["config"]["type"], deployment)
-
         tempest.Tempest(deployment["uuid"]).uninstall()
-        with deployer:
-            deployer.make_cleanup()
-            deployment.delete()
+        try:
+            deployer = deploy_engine.Engine.get_engine(
+                deployment["config"]["type"], deployment)
+            with deployer:
+                deployer.make_cleanup()
+        except exceptions.PluginNotFound:
+            LOG.info(_("Deployment %s will be deleted despite"
+                       " exception") % deployment["uuid"])
+
+        deployment.delete()
 
     @classmethod
     def recreate(cls, deployment):
@@ -157,8 +161,20 @@ class Task(object):
         return objects.Task.get(task_id)
 
     @staticmethod
-    def get_detailed(task_id):
-        return objects.Task.get_detailed(task_id)
+    def get_detailed(task_id, extended_results=False):
+        """Get detailed task data.
+
+        :param task_id: str task UUID
+        :param extended_results: whether to return task data as dict
+                                 with extended results
+        :returns: rally.common.db.sqlalchemy.models.Task
+        :returns: dict
+        """
+        task = objects.Task.get_detailed(task_id)
+        if task and extended_results:
+            task = dict(task)
+            task["results"] = objects.Task.extend_results(task["results"])
+        return task
 
     @classmethod
     def render_template(cls, task_template, template_dir="./", **kwargs):
@@ -359,9 +375,10 @@ class Verification(object):
     @classmethod
     def verify(cls, deployment, set_name="", regex=None, tests_file=None,
                tempest_config=None, expected_failures=None, system_wide=False,
-               concur=0):
+               concur=0, failing=False):
         """Start verification.
 
+        :param deployment: UUID or name of a deployment
         :param deployment: UUID or name of a deployment
         :param set_name: Name of a Tempest test set
         :param regex: Regular expression of test
@@ -376,8 +393,11 @@ class Verification(object):
                             env when running the tests
         :param concur: How many processes to use to run Tempest tests.
                        The default value (0) auto-detects CPU count
+        :param failing: Re-run tests that failed during the last
+                        execution
         :returns: Verification object
         """
+
         deployment_uuid = objects.Deployment.get(deployment)["uuid"]
         verification = objects.Verification(deployment_uuid=deployment_uuid)
         verifier = tempest.Tempest(deployment_uuid,
@@ -386,6 +406,11 @@ class Verification(object):
                                    system_wide=system_wide)
 
         if not verifier.is_installed():
+            LOG.warning("Installation of Tempest will be deprecated and "
+                        "removed in the future when executing the `rally "
+                        "verify start` command. To install Tempest please "
+                        "start to use the `rally verify install` command "
+                        "before `rally verify start`.")
             LOG.info(_("Tempest is not installed "
                        "for the specified deployment."))
             LOG.info(_("Installing Tempest "
@@ -395,7 +420,8 @@ class Verification(object):
         LOG.info("Starting verification of deployment: %s" % deployment_uuid)
         verification.set_running()
         verifier.verify(set_name=set_name, regex=regex, tests_file=tests_file,
-                        expected_failures=expected_failures, concur=concur)
+                        expected_failures=expected_failures, concur=concur,
+                        failing=failing)
 
         return verification
 
@@ -421,16 +447,16 @@ class Verification(object):
         return deployment, verification
 
     @classmethod
-    def install_tempest(cls, deployment, source=None, no_tempest_venv=False):
+    def install_tempest(cls, deployment, source=None, system_wide=False):
         """Install Tempest.
 
         :param deployment: UUID or name of a deployment
         :param source: Path/URL to repo to clone Tempest from
-        :param no_tempest_venv: Whether or not to create a Tempest virtual env
+        :param system_wide: Whether or not to create a Tempest virtual env
         """
         deployment_uuid = objects.Deployment.get(deployment)["uuid"]
         verifier = tempest.Tempest(deployment_uuid, source=source,
-                                   system_wide=no_tempest_venv)
+                                   system_wide=system_wide)
         verifier.install()
 
     @classmethod
@@ -445,13 +471,13 @@ class Verification(object):
 
     @classmethod
     def reinstall_tempest(cls, deployment, tempest_config=None,
-                          source=None, no_tempest_venv=False):
+                          source=None, system_wide=False):
         """Uninstall Tempest and install again.
 
         :param deployment: UUID or name of a deployment
         :param tempest_config: User specified Tempest config file location
         :param source: Path/URL to repo to clone Tempest from
-        :param no_tempest_venv: Whether or not to create a Tempest virtual env
+        :param system_wide: Whether or not to create a Tempest virtual env
         """
         deployment_uuid = objects.Deployment.get(deployment)["uuid"]
         verifier = tempest.Tempest(deployment_uuid)
@@ -465,10 +491,21 @@ class Verification(object):
         verifier.uninstall()
         verifier = tempest.Tempest(deployment_uuid, source=source,
                                    tempest_config=tempest_config,
-                                   system_wide=no_tempest_venv)
+                                   system_wide=system_wide)
         verifier.install()
         if not tempest_config:
             shutil.move(tmp_conf_path, verifier.config_file)
+
+    @classmethod
+    def discover_tests(cls, deployment, pattern=""):
+        """Get a list of discovered tests.
+
+        :param deployment: UUID or name of a deployment
+        :param pattern: Test name pattern which can be used to match
+        """
+        deployment_uuid = objects.Deployment.get(deployment)["uuid"]
+        verifier = tempest.Tempest(deployment_uuid)
+        return verifier.discover_tests(pattern)
 
     @staticmethod
     def _check_tempest_tree_existence(verifier):
@@ -499,7 +536,7 @@ class Verification(object):
 
     @classmethod
     def show_config_info(cls, deployment):
-        """Show information about configuration file of Tempest.
+        """Get information about configuration file of Tempest.
 
         :param deployment: UUID or name of a deployment
         """

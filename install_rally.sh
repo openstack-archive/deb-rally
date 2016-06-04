@@ -21,6 +21,7 @@ VERBOSE=""
 ASKCONFIRMATION=1
 RECREATEDEST="ask"
 USEVIRTUALENV="yes"
+DEVELOPMENT_MODE="false"
 
 # ansi colors for formatting heredoc
 ESC=$(printf "\e")
@@ -166,9 +167,9 @@ $GREEN  --url                 $NO_COLOR Git repository public URL to download Ra
                          from custom repository.
                          (Default: ${RALLY_GIT_URL}).
                          (Ignored when you are already in git repository).
-$GREEN  --branch              $NO_COLOR Git branch name name or git tag (Rally release) to install.
-                         (Default: latest - master).
-                         (Ignored when you are already in git repository).
+$GREEN  --branch              $NO_COLOR Git branch name, tag (Rally release), commit hash, ref, or other
+                         tree-ish to install. (Default: master)
+                         Ignored when you are already in git repository.
 $GREEN  -f, --overwrite       $NO_COLOR Deprecated. Use -r instead.
 $GREEN  -r, --recreate        $NO_COLOR Remove target directory if it already exist.
                          If neither '-r' nor '-R' is set default behaviour is to ask.
@@ -346,9 +347,9 @@ __EOF__
                     missing=${missing//python-pip/}
                     if ! $pkg_manager python-pip; then
                         if ask_yn "Error installing python-pip. Install from external source?"; then
-                            local pdir=$(mktemp -d)
+                            local pdir=$(mktemp /tmp/tmp.XXXXXXXXXX -d)
                             local getpip="$pdir/get-pip.py"
-                            download "$getpip" https://raw.github.com/pypa/pip/master/contrib/get-pip.py
+                            download "$getpip" https://bootstrap.pypa.io/get-pip.py
                             if ! "$PYTHON" "$getpip"; then
                                 abort $EX_PROTOCOL "Error while installing python-pip from external source."
                             fi
@@ -459,7 +460,7 @@ setup_rally_configuration () {
     cp "$SRCDIR"/etc/rally/rally.conf.sample "$ETCDIR"/rally.conf
 
     [ -d "$DBDIR" ] || mkdir -p "$DBDIR"
-    local CONF_TMPFILE=$(mktemp)
+    local CONF_TMPFILE=$(mktemp /tmp/tmp.XXXXXXXXXX)
     sed "s|#connection *=.*|connection = \"$DBCONNSTRING\"|" "$ETCDIR"/rally.conf > "$CONF_TMPFILE"
     cat "$CONF_TMPFILE" > "$ETCDIR"/rally.conf
     rm "$CONF_TMPFILE"
@@ -702,15 +703,14 @@ BASEDIR=$(dirname "$(readlink -e "$0")")
 if [ -d "$BASEDIR"/.git ]
 then
     SOURCEDIR=$BASEDIR
-    pushd $BASEDIR > /dev/null
-    if find . -name '*.py[co]' -exec rm -f {} +
-    then
-        echo "Wiped python compiled files."
-    else
-        echo "Warning! Unable to wipe python compiled files"
-    fi
-
-    popd > /dev/null
+    (
+        cd "$BASEDIR"
+        if find . -name '*.py[co]' -exec rm -f {} +; then
+            echo "Wiped python compiled files."
+        else
+            echo "Warning! Unable to wipe python compiled files"
+        fi
+    )
 else
     if [ "$USEVIRTUALENV" = 'yes' ]
     then
@@ -721,11 +721,14 @@ else
 
     if ! [ -d "$SOURCEDIR"/.git ]
     then
-        echo "Downloading Rally from subversion repository $RALLY_GIT_URL ..."
+        echo "Downloading Rally from git repository $RALLY_GIT_URL ..."
         CURRENT_ACTION="downloading-src"
-        git clone "$RALLY_GIT_URL" -b "$RALLY_GIT_BRANCH" "$SOURCEDIR"
-        if ! [ -d $SOURCEDIR/.git ]
-            then
+        git clone "$RALLY_GIT_URL" "$SOURCEDIR"
+        (
+            cd "$SOURCEDIR"
+            git checkout "$RALLY_GIT_BRANCH"
+        )
+        if ! [ -d "$SOURCEDIR"/.git ]; then
             abort $EX_CANTCREAT "Unable to download git repository"
         fi
         CURRENT_ACTION="src-downloaded"
@@ -737,19 +740,18 @@ install_db_connector
 # Install rally
 cd "$SOURCEDIR"
 # Get latest available pip and reset shell cache
-pip install -i $BASE_PIP_URL -U 'pip'
+pip install -i "$BASE_PIP_URL" -U 'pip!=8'
 hash -r
 
 # Install dependencies
-pip install -i $BASE_PIP_URL pbr 'tox<=1.6.1'
+pip install -i "$BASE_PIP_URL" pbr 'tox<=1.6.1'
 # Uninstall possible previous version
 pip uninstall -y rally || true
 # Install rally
-if [ $DEVELOPMENT_MODE ]
-then
-    pip install -i $BASE_PIP_URL -e .
+if [ "$DEVELOPMENT_MODE" = "true" ]; then
+    pip install -i "$BASE_PIP_URL" -e .
 else
-    pip install -i $BASE_PIP_URL .
+    pip install -i "$BASE_PIP_URL" .
 fi
 
 cd "$ORIG_WD"
@@ -765,16 +767,14 @@ __EOF__
 
     setup_rally_configuration "$SOURCEDIR"
 
-    if ! [ $DEVELOPMENT_MODE ]
-    then
+    if ! [ "$DEVELOPMENT_MODE" = "true" ]; then
         SAMPLESDIR=$VENVDIR/samples
-        mkdir -p $SAMPLESDIR
-        cp -r $SOURCEDIR/samples/* $SAMPLESDIR/
-    else
-        SAMPLESDIR=$SOURCEDIR/samples
+        mkdir -p "$SAMPLESDIR"
+        cp -r "$SOURCEDIR"/samples/* "$SAMPLESDIR"/
     fi
-    mkdir -p $VENVDIR/etc/bash_completion.d
-    install $SOURCEDIR/etc/rally.bash_completion $VENVDIR/etc/bash_completion.d/
+    mkdir -p "$VENVDIR"/etc/bash_completion.d
+    install "$SOURCEDIR"/etc/rally.bash_completion \
+        "$VENVDIR"/etc/bash_completion.d/
 
     cat <<__EOF__
 $GREEN==============================
@@ -801,15 +801,13 @@ __EOF__
 else
     setup_rally_configuration "$SOURCEDIR"
 
-    if ! [ $DEVELOPMENT_MODE ]
-    then
+    if ! [ "$DEVELOPMENT_MODE" = "true" ]; then
         SAMPLESDIR=/usr/share/rally/samples
-        mkdir -p $SAMPLESDIR
-        cp -r $SOURCEDIR/samples/* $SAMPLESDIR/
-    else
-        SAMPLESDIR=$SOURCEDIR/samples
+        mkdir -p "$SAMPLESDIR"
+        cp -r "$SOURCEDIR"/samples/* "$SAMPLESDIR"/
     fi
-    ln -s /usr/local/etc/bash_completion.d/rally.bash_completion /etc/bash_completion.d/ 2> /dev/null || true
+    ln -s /usr/local/etc/bash_completion.d/rally.bash_completion \
+        /etc/bash_completion.d/ 2> /dev/null || true
     if [ -f "${DBFILE}" ]; then
         chmod 777 "$DBFILE"
     fi

@@ -25,6 +25,7 @@ import mock
 from rally import api
 from rally.common import objects
 from rally import consts
+from rally.deployment import engine
 from rally import exceptions
 from tests.unit import fakes
 from tests.unit import test
@@ -256,6 +257,24 @@ class TaskAPITestCase(test.TestCase):
         mock_task_delete.assert_called_once_with(
             self.task_uuid, status=None)
 
+    @mock.patch("rally.api.objects.Task")
+    def test_get_detailed(self, mock_task):
+        mock_task.get_detailed.return_value = "detailed_task_data"
+        self.assertEqual("detailed_task_data",
+                         api.Task.get_detailed("task_uuid"))
+        mock_task.get_detailed.assert_called_once_with("task_uuid")
+
+    @mock.patch("rally.api.objects.Task")
+    def test_get_detailed_with_extended_results(self, mock_task):
+        mock_task.get_detailed.return_value = (("uuid", "foo_uuid"),
+                                               ("results", "raw_results"))
+        mock_task.extend_results.return_value = "extended_results"
+        self.assertEqual({"uuid": "foo_uuid", "results": "extended_results"},
+                         api.Task.get_detailed("foo_uuid",
+                                               extended_results=True))
+        mock_task.get_detailed.assert_called_once_with("foo_uuid")
+        mock_task.extend_results.assert_called_once_with("raw_results")
+
 
 class BaseDeploymentTestCase(test.TestCase):
     def setUp(self):
@@ -410,7 +429,7 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         self.tempest.is_installed.assert_called_once_with()
         self.tempest.verify.assert_called_once_with(
             set_name="smoke", regex=None, tests_file=None,
-            expected_failures=None, concur=0)
+            expected_failures=None, concur=0, failing=False)
 
     @mock.patch("rally.api.objects.Deployment.get")
     @mock.patch("rally.api.objects.Verification")
@@ -424,12 +443,11 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         api.Verification.verify(
             self.deployment_uuid, set_name="smoke",
             regex=None, tests_file=None, tempest_config=None)
-
         self.tempest.is_installed.assert_called_once_with()
         self.tempest.install.assert_called_once_with()
         self.tempest.verify.assert_called_once_with(
             set_name="smoke", regex=None, tests_file=None,
-            expected_failures=None, concur=0)
+            expected_failures=None, concur=0, failing=False)
 
     @mock.patch("os.path.exists", return_value=True)
     @mock.patch("rally.api.objects.Deployment.get")
@@ -443,11 +461,11 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         tests_file = "/path/to/tests/file"
         api.Verification.verify(
             self.deployment_uuid, set_name="", regex=None,
-            tests_file=tests_file, tempest_config=None)
+            tests_file=tests_file, tempest_config=None, failing=False)
 
         self.tempest.verify.assert_called_once_with(
             set_name="", regex=None, tests_file=tests_file,
-            expected_failures=None, concur=0)
+            expected_failures=None, concur=0, failing=False)
 
     @mock.patch("rally.common.objects.Deployment.get")
     @mock.patch("rally.api.objects.Verification")
@@ -499,6 +517,13 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         mock_copy2.assert_called_once_with(fake_conf, tmp_file)
         self.tempest.install.assert_called_once_with()
         mock_move.assert_called_once_with(tmp_file, fake_conf)
+
+    @mock.patch("rally.common.objects.Deployment.get")
+    @mock.patch("rally.verification.tempest.tempest.Tempest")
+    def test_discover_tests(self, mock_tempest, mock_deployment_get):
+        mock_tempest.return_value = self.tempest
+        api.Verification.discover_tests(self.deployment_uuid, "some_pattern")
+        self.tempest.discover_tests.assert_called_once_with("some_pattern")
 
     @mock.patch("os.path.exists", return_value=True)
     @mock.patch("rally.common.objects.Deployment.get")
@@ -558,7 +583,7 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         self.assertEqual(0, mock_open.call_count)
 
     @mock.patch("rally.common.objects.Verification.list")
-    def test_delete(self, mock_verification_list):
+    def test_list(self, mock_verification_list):
         retval = api.Verification.list()
         self.assertEqual(mock_verification_list.return_value, retval)
         mock_verification_list.assert_called_once_with(None)
@@ -568,3 +593,25 @@ class VerificationAPITestCase(BaseDeploymentTestCase):
         retval = api.Verification.get("fake_id")
         self.assertEqual(mock_verification_get.return_value, retval)
         mock_verification_get.assert_called_once_with("fake_id")
+
+    @mock.patch("rally.common.objects.deploy.db.deployment_delete")
+    @mock.patch("rally.common.objects.deploy.db.deployment_update")
+    @mock.patch("rally.common.objects.deploy.db.deployment_get")
+    def test_destroy_invalid_deployment_type(self, mock_deployment_get,
+                                             mock_deployment_update,
+                                             mock_deployment_delete):
+        with mock.patch.dict(self.deployment["config"],
+                             {"type": "InvalidDeploymentType"}):
+            deployment = mock.Mock()
+            deployment.update_status = lambda x: x
+            deployment.__getitem__ = lambda _self, key: self.deployment[key]
+            self.assertRaises(exceptions.PluginNotFound,
+                              engine.Engine.get_engine,
+                              self.deployment["config"]["type"],
+                              deployment)
+            mock_deployment_get.return_value = self.deployment
+            mock_deployment_update.return_value = self.deployment
+            api.Deployment.destroy(self.deployment_uuid)
+            mock_deployment_get.assert_called_once_with(self.deployment_uuid)
+            mock_deployment_delete.assert_called_once_with(
+                self.deployment_uuid)

@@ -20,7 +20,7 @@ from rally.common import logging
 from rally.common import utils as rutils
 from rally import consts
 from rally import exceptions
-from rally.plugins.openstack.context.cleanup import manager as resource_manager
+from rally.plugins.openstack.cleanup import manager as resource_manager
 from rally.plugins.openstack.scenarios.sahara import utils
 from rally.task import context
 from rally.task import utils as bench_utils
@@ -49,6 +49,12 @@ class SaharaCluster(context.Context):
                 "minimum": 1
             },
             "flavor_id": {
+                "type": "string",
+            },
+            "master_flavor_id": {
+                "type": "string",
+            },
+            "worker_flavor_id": {
                 "type": "string",
             },
             "floating_ip_pool": {
@@ -86,7 +92,7 @@ class SaharaCluster(context.Context):
         },
         "additionalProperties": False,
         "required": ["plugin_name", "hadoop_version", "workers_count",
-                     "flavor_id"]
+                     "master_flavor_id", "worker_flavor_id"]
     }
 
     @logging.log_task_wrapper(LOG.info, _("Enter context: `Sahara Cluster`"))
@@ -113,7 +119,9 @@ class SaharaCluster(context.Context):
             cluster = scenario._launch_cluster(
                 plugin_name=self.config["plugin_name"],
                 hadoop_version=self.config["hadoop_version"],
-                flavor_id=self.config["flavor_id"],
+                flavor_id=self.config.get("flavor_id"),
+                master_flavor_id=self.config["master_flavor_id"],
+                worker_flavor_id=self.config["worker_flavor_id"],
                 workers_count=self.config["workers_count"],
                 image_id=image_id,
                 floating_ip_pool=floating_ip_pool,

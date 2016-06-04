@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import datetime
+import datetime as dt
 
 from jsonschema import exceptions as schema_exceptions
 import mock
@@ -145,7 +145,7 @@ class BenchmarkUtilsTestCase(test.TestCase):
                           get_from_manager, resource)
 
     def test_check_service_status(self):
-        class service():
+        class service(object):
             def __init__(self, name):
                 self.status = "enabled"
                 self.state = "up"
@@ -163,7 +163,7 @@ class BenchmarkUtilsTestCase(test.TestCase):
         self.assertTrue(client.services.list.called)
 
     def test_check_service_status_fail(self):
-        class service():
+        class service(object):
             def __init__(self, name):
                 self.status = "enabled"
                 self.state = "down"
@@ -192,8 +192,8 @@ class WaitForTestCase(test.TestCase):
             seconds=self.load_secs)
 
     def get_fake_checker_delayed(self, **delay):
-        deadline = datetime.datetime.now() + datetime.timedelta(**delay)
-        return lambda obj: datetime.datetime.now() > deadline
+        deadline = dt.datetime.now() + dt.timedelta(**delay)
+        return lambda obj: dt.datetime.now() > deadline
 
     def fake_checker_false(self, obj):
         return False

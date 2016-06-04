@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import datetime as date
+import datetime as dt
 import os.path
 import tempfile
 
@@ -57,8 +57,8 @@ class VerifyCommandsTestCase(test.TestCase):
 
         mock_verification_verify.assert_called_once_with(
             deployment_id, set_name="full", regex=None, tests_file=None,
-            tempest_config=None, expected_failures=None, system_wide=False,
-            concur=0)
+            tempest_config=None, expected_failures=None,
+            system_wide=False, concur=0, failing=False)
 
     @mock.patch("rally.osclients.Clients")
     @mock.patch("rally.api.Verification.verify")
@@ -76,7 +76,7 @@ class VerifyCommandsTestCase(test.TestCase):
         mock_verification_verify.assert_called_once_with(
             deployment_id, set_name="full", regex=None, tests_file=None,
             tempest_config=tempest_config.name, expected_failures=None,
-            system_wide=False, concur=0)
+            system_wide=False, concur=0, failing=False)
         tempest_config.close()
 
     @mock.patch("rally.api.Verification.verify")
@@ -91,7 +91,7 @@ class VerifyCommandsTestCase(test.TestCase):
         mock_verification_verify.assert_called_once_with(
             deployment_id, set_name="", regex=None, tests_file=tests_file,
             tempest_config=None, expected_failures=None, system_wide=False,
-            concur=0)
+            concur=0, failing=False)
 
     @mock.patch("rally.api.Verification.verify")
     @mock.patch("six.moves.builtins.open",
@@ -107,7 +107,7 @@ class VerifyCommandsTestCase(test.TestCase):
         mock_verification_verify.assert_called_once_with(
             deployment_id, set_name="full", regex=None, tests_file=None,
             tempest_config=None, expected_failures={"test": "reason of fail"},
-            system_wide=False, concur=0)
+            system_wide=False, concur=0, failing=False)
 
     @mock.patch("rally.api.Verification.verify")
     def test_start_with_wrong_set_name(self, mock_verification_verify):
@@ -119,6 +119,28 @@ class VerifyCommandsTestCase(test.TestCase):
 
         self.assertNotIn(wrong_set_name, consts.TempestTestsSets,
                          consts.TempestTestsAPI)
+        self.assertFalse(mock_verification_verify.called)
+
+    @mock.patch("rally.api.Verification.verify")
+    def test_start_with_failing_and_set_name(self, mock_verification_verify):
+        deployment_id = "f2009aae-6ef3-468e-96b2-3c987d584010"
+
+        set_name = "some_value"
+        self.verify.start(set_name=set_name, deployment=deployment_id,
+                          do_use=False, failing=True)
+
+        self.assertFalse(mock_verification_verify.called)
+
+    @mock.patch("rally.api.Verification.verify")
+    @mock.patch("os.path.exists", return_value=True)
+    def test_start_with_failing_and_test_files(self, mock_exists,
+                                               mock_verification_verify):
+        deployment_id = "f2009aae-6ef3-468e-96b2-3c987d584010"
+        tests_file = "/path/to/tests/file"
+
+        self.verify.start(tests_file=tests_file, deployment=deployment_id,
+                          do_use=False, failing=True)
+
         self.assertFalse(mock_verification_verify.called)
 
     @mock.patch("rally.api.Verification.import_results")
@@ -150,8 +172,8 @@ class VerifyCommandsTestCase(test.TestCase):
     def test_list(self, mock_verification_list, mock_print_list):
         fields = ["UUID", "Deployment UUID", "Set name", "Tests", "Failures",
                   "Created at", "Duration", "Status"]
-        verifications = [{"created_at": date.datetime.now(),
-                          "updated_at": date.datetime.now()}]
+        verifications = [{"created_at": dt.datetime.now(),
+                          "updated_at": dt.datetime.now()}]
         mock_verification_list.return_value = verifications
         self.verify.list()
 
@@ -454,6 +476,13 @@ class VerifyCommandsTestCase(test.TestCase):
         self.verify.reinstall(deployment_uuid, tempest_conf, source)
         mock_verification_reinstall_tempest.assert_called_once_with(
             deployment_uuid, tempest_conf, source, False)
+
+    @mock.patch("rally.api.Verification.discover_tests")
+    def test_discover(self, mock_verification_discover_tests):
+        deployment_uuid = "97725f22-1cd2-46a5-8c62-3cdc36ed6d2a"
+        self.verify.discover(deployment_uuid, "some_pattern")
+        mock_verification_discover_tests.assert_called_once_with(
+            deployment_uuid, "some_pattern")
 
     @mock.patch("rally.api.Verification.show_config_info")
     def test_showconfig(self, mock_verification_show_config_info):

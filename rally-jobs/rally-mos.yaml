@@ -1,41 +1,50 @@
-{%- set sahara_service_type = sahara_service_type|default("data_processing") %}
 ---
-{%- include "sahara.yaml" %}
+{%- set keystone_version = keystone_version|default("v2.0") %}
+{% if keystone_version == "v2.0" %}
 
-  KeystoneBasic.create_user:
+  SaharaNodeGroupTemplates.create_and_list_node_group_templates:
     -
-      args: {}
+      args:
+        hadoop_version: "{{sahara_hadoop_version}}"
+        flavor:
+         name: "m1.small"
       runner:
         type: "constant"
         times: 1
         concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        api_versions:
+          sahara:
+            service_type: {{sahara_service_type}}
       sla:
         failure_rate:
           max: 0
 
-  KeystoneBasic.create_delete_user:
+  SaharaNodeGroupTemplates.create_delete_node_group_templates:
     -
-      args: {}
+      args:
+        hadoop_version: "{{sahara_hadoop_version}}"
+        flavor:
+         name: "m1.small"
       runner:
         type: "constant"
         times: 1
         concurrency: 1
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        api_versions:
+          sahara:
+            service_type: {{sahara_service_type}}
       sla:
         failure_rate:
           max: 0
 
   KeystoneBasic.create_and_list_tenants:
-    -
-      args: {}
-      runner:
-        type: "constant"
-        times: 1
-        concurrency: 1
-      sla:
-        failure_rate:
-          max: 0
-
-  KeystoneBasic.create_and_list_users:
     -
       args: {}
       runner:
@@ -68,6 +77,41 @@
       context:
         users:
           tenants: 1
+      sla:
+        failure_rate:
+          max: 0
+
+{% endif %}
+
+  KeystoneBasic.create_user:
+    -
+      args: {}
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  KeystoneBasic.create_delete_user:
+    -
+      args: {}
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
+      sla:
+        failure_rate:
+          max: 0
+
+  KeystoneBasic.create_and_list_users:
+    -
+      args: {}
+      runner:
+        type: "constant"
+        times: 1
+        concurrency: 1
       sla:
         failure_rate:
           max: 0
@@ -254,7 +298,7 @@
           name: "m1.tiny"
         image:
           name: "TestVM|cirros.*uec"
-        floating_network: "net04_ext"
+        floating_network: "{{external_net}}"
         use_floating_ip: true
         command:
           script_file: "~/.rally/extra/instance_dd_test.sh"
@@ -826,3 +870,37 @@
       sla:
         failure_rate:
           max: 0
+
+  VMTasks.runcommand_heat:
+    -
+      args:
+        workload:
+          resource: ["rally.plugins.workload", "siege.py"]
+          username: "fedora"
+        template: /home/rally/.rally/extra/workload/wordpress_heat_template.yaml
+        files:
+          wp-instances.yaml: /home/rally/.rally/extra/workload/wp-instances.yaml
+        parameters:
+          wp_instances_count: 2
+          wp_instance_type: gig
+          instance_type: gig
+          wp_image: fedora
+          image: fedora
+          network_id: {{external_net_id}}
+      context:
+        users:
+          tenants: 1
+          users_per_tenant: 1
+        flavors:
+          - name: gig
+            ram: 1024
+            disk: 4
+            vcpus: 1
+      runner:
+        concurrency: 1
+        timeout: 3000
+        times: 1
+        type: constant
+      sla:
+        failure_rate:
+          max: 100
