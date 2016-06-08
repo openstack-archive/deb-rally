@@ -60,7 +60,7 @@ Build-Depends-Indep: python-alembic,
                      subunit,
                      testrepository,
 Standards-Version: 3.9.8
-Homepage: https://github.com/stackforge/rally
+Homepage: https://github.com/openstack/rally
 Vcs-Browser: https://anonscm.debian.org/cgit/openstack/rally.git/
 Vcs-Git: https://anonscm.debian.org/git/openstack/rally.git
 

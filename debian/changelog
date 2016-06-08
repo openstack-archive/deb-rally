@@ -5,6 +5,7 @@ rally (0.3.3+dfsg1-1) UNRELEASED; urgency=medium
   * d/watch: Changed to new URL
   * Fixed (build-)depends for this release
   * Standards-Version is 3.9.8 now (no changes needed)
+  * d/control: Changed homepage to new URL
 
  -- Ondřej Nový <novy@ondrej.org>  Sat, 04 Jun 2016 22:46:50 +0200
 
