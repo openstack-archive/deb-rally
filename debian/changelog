@@ -1,6 +1,8 @@
-rally (0.3.3-1) UNRELEASED; urgency=medium
+rally (0.3.3+dfsg1-1) UNRELEASED; urgency=medium
 
   * New upstream release
+  * Removed minified JS/CSS files from orig tarball
+  * d/watch: Changed to new URL
   * Fixed (build-)depends for this release
   * Standards-Version is 3.9.8 now (no changes needed)
 

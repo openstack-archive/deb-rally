@@ -1,6 +1,7 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Rally
 Source: https://github.com/openstack/rally.git
+Files-Excluded: rally/ui/templates/libs/*
 
 Files: *
 Copyright: (c) 2012-2015, OpenStack Foundation
