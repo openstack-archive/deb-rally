@@ -109,6 +109,8 @@ Depends: python-alembic,
          python-zaqarclient (>= 0.3.0),
          sqlite3,
          subunit,
+         libjs-angularjs,
+         libjs-d3,
          ${misc:Depends},
          ${python:Depends},
 Description: benchmark System for OpenStack - Python code
