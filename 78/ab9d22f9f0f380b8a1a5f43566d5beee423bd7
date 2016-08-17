@@ -1,0 +1,10 @@
+Code-Review+1: Piyush <piyush2011257@gmail.com>
+Code-Review+2: Andrey Kurilin <akurilin@mirantis.com>
+Code-Review+2: Alexander Maretskiy <amaretskiy@mirantis.com>
+Workflow+1: Alexander Maretskiy <amaretskiy@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 18 Apr 2016 09:04:10 +0000
+Reviewed-on: https://review.openstack.org/301804
+Project: openstack/deb-rally
+Branch: refs/heads/master

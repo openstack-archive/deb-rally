@@ -1,0 +1,12 @@
+Code-Review+1: Qiming Teng <tengqim@cn.ibm.com>
+Code-Review+1: Ethan Lynn <xuanlangjian@gmail.com>
+Verified+1: Mirantis Rally CI <rally-ci@mirantis.com>
+Code-Review+2: Roman Vasilets <rvasilets@mirantis.com>
+Code-Review+2: Illia Khudoshyn <ikhudoshyn@mirantis.com>
+Workflow+1: Illia Khudoshyn <ikhudoshyn@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 27 Apr 2016 14:36:16 +0000
+Reviewed-on: https://review.openstack.org/298109
+Project: openstack/deb-rally
+Branch: refs/heads/master

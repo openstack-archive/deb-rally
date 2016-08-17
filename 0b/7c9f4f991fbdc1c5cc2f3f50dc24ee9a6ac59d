@@ -1,0 +1,11 @@
+Code-Review+1: Steve Heyman <steve.heyman@rackspace.com>
+Verified+1: Mirantis Rally CI <rally-ci@mirantis.com>
+Code-Review+2: Li Yingjun <yingjun.li@kylin-cloud.com>
+Code-Review+2: Illia Khudoshyn <ikhudoshyn@mirantis.com>
+Workflow+1: Illia Khudoshyn <ikhudoshyn@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 22 Jun 2016 10:19:31 +0000
+Reviewed-on: https://review.openstack.org/332593
+Project: openstack/deb-rally
+Branch: refs/heads/master

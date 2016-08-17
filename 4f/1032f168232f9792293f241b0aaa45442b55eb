@@ -1,0 +1,12 @@
+Verified+1: Mirantis Rally CI <rally-ci@mirantis.com>
+Code-Review+1: Chris St. Pierre <cstpierr@cisco.com>
+Code-Review+2: Andrey Kurilin <akurilin@mirantis.com>
+Code-Review+1: Srinivas Sakhamuri <srini.openstack@gmail.com>
+Code-Review+1: Alexandr Nevenchannyy <anevenchannyy@mirantis.com>
+Workflow+1: Andrey Kurilin <akurilin@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 02 May 2016 16:39:24 +0000
+Reviewed-on: https://review.openstack.org/306523
+Project: openstack/deb-rally
+Branch: refs/heads/master
