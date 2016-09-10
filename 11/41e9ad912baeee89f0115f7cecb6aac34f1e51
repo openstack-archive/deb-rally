@@ -1,0 +1,10 @@
+Code-Review+2: Alexander Maretskiy <amaretskiy@mirantis.com>
+Code-Review+1: chenhb <chen.haibing1@zte.com.cn>
+Code-Review+2: Roman Vasilets <rvasilets@mirantis.com>
+Workflow+1: Roman Vasilets <rvasilets@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Fri, 19 Aug 2016 18:46:06 +0000
+Reviewed-on: https://review.openstack.org/357715
+Project: openstack/deb-rally
+Branch: refs/heads/master
