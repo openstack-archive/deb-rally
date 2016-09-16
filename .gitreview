@@ -1,4 +1,5 @@
 [gerrit]
 host=review.openstack.org
 port=29418
-project=openstack/rally.git
+project=openstack/deb-rally.git
+defaultbranch=debian/newton
