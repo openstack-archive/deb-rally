@@ -61,8 +61,8 @@ Build-Depends-Indep: python-alembic,
                      testrepository,
 Standards-Version: 3.9.8
 Homepage: https://github.com/openstack/rally
-Vcs-Browser: https://anonscm.debian.org/cgit/openstack/rally.git/
-Vcs-Git: https://anonscm.debian.org/git/openstack/rally.git
+Vcs-Browser: https://git.openstack.org/cgit/openstack/deb-rally?h=debian%2Fnewton
+Vcs-Git: https://git.openstack.org/openstack/deb-rally -b debian/newton
 
 Package: python-rally
 Section: python

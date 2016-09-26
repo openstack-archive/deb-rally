@@ -8,6 +8,8 @@ rally (0.3.3+dfsg1-1) UNRELEASED; urgency=medium
   * d/control: Changed homepage to new URL
   * Use OSLO_PACKAGE_VERSION from openstack-pkg-tools
   * d/{control,copyright}: Use my @debian.org email address
+  * d/s/options: extend-diff-ignore of .gitreview
+  * d/control: Using OpenStack's Gerrit as VCS URLs.
 
  -- Ondřej Nový <novy@ondrej.org>  Sat, 04 Jun 2016 22:46:50 +0200
 
