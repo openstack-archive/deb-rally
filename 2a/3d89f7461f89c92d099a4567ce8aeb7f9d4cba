@@ -1,0 +1,12 @@
+Code-Review+1: Ma Xinjian <maxj.fnst@cn.fujitsu.com>
+Code-Review+2: Chris St. Pierre <cstpierr@cisco.com>
+Code-Review+2: Roman Vasylets <pomeo92@gmail.com>
+Workflow+1: Roman Vasylets <pomeo92@gmail.com>
+Code-Review+1: zhangzhihui <zhangzh.fnst@cn.fujitsu.com>
+Verified+1: Mirantis Rally CI <rally-ci@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 16 Nov 2016 03:58:05 +0000
+Reviewed-on: https://review.openstack.org/394530
+Project: openstack/deb-rally
+Branch: refs/heads/master
