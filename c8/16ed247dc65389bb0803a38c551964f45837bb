@@ -1,0 +1,9 @@
+Verified+1: Mirantis Rally CI <rally-ci@mirantis.com>
+Code-Review+2: Andrey Kurilin <akurilin@mirantis.com>
+Workflow+1: Andrey Kurilin <akurilin@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 13 Dec 2016 19:28:01 +0000
+Reviewed-on: https://review.openstack.org/410252
+Project: openstack/deb-rally
+Branch: refs/heads/master
