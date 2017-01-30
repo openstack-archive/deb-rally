@@ -1,0 +1,8 @@
+Code-Review+2: Andrey Kurilin <akurilin@mirantis.com>
+Workflow+1: Andrey Kurilin <akurilin@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sat, 28 Jan 2017 10:58:19 +0000
+Reviewed-on: https://review.openstack.org/426173
+Project: openstack/deb-rally
+Branch: refs/heads/master
