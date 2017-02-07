@@ -1,0 +1,9 @@
+Code-Review+2: Anton Studenov <astudenov@mirantis.com>
+Code-Review+2: Alexander Maretskiy <amaretskiy@mirantis.com>
+Workflow+1: Alexander Maretskiy <amaretskiy@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 07 Feb 2017 14:24:31 +0000
+Reviewed-on: https://review.openstack.org/427769
+Project: openstack/deb-rally
+Branch: refs/heads/master
