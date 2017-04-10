@@ -1,0 +1,9 @@
+Code-Review+2: Roman Vasylets <pomeo92@gmail.com>
+Code-Review+1: chenhb <chen.haibing1@zte.com.cn>
+Workflow+1: Roman Vasylets <pomeo92@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 10 Apr 2017 21:16:10 +0000
+Reviewed-on: https://review.openstack.org/429564
+Project: openstack/deb-rally
+Branch: refs/heads/master
