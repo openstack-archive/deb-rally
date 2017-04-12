@@ -1,0 +1,8 @@
+Code-Review+2: Anton Studenov <astudenov@mirantis.com>
+Workflow+1: Andrey Kurilin <andr.kurilin@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 12 Apr 2017 10:50:06 +0000
+Reviewed-on: https://review.openstack.org/456151
+Project: openstack/deb-rally
+Branch: refs/heads/stable/0.9
