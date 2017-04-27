@@ -1,0 +1,10 @@
+Verified+1: Mirantis Rally CI <rally-ci@mirantis.com>
+Code-Review+1: Mathieu Rohon <mathieu.rohon@gmail.com>
+Code-Review+2: Roman Vasylets <pomeo92@gmail.com>
+Workflow+1: Roman Vasylets <pomeo92@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Thu, 27 Apr 2017 00:51:07 +0000
+Reviewed-on: https://review.openstack.org/386418
+Project: openstack/deb-rally
+Branch: refs/heads/master
