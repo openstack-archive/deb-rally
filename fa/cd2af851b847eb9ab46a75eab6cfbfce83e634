@@ -1,0 +1,12 @@
+Code-Review+2: chenhb <chen.haibing1@zte.com.cn>
+Code-Review+2: Andrey Kurilin <andr.kurilin@gmail.com>
+Code-Review+1: limeng <limeng@awcloud.com>
+Code-Review+2: Boris Pavlovic <boris@pavlovic.me>
+Workflow+1: chenhb <chen.haibing1@zte.com.cn>
+Verified-1: Mirantis Rally CI <rally-ci@mirantis.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Sat, 01 Jul 2017 03:35:03 +0000
+Reviewed-on: https://review.openstack.org/479291
+Project: openstack/deb-rally
+Branch: refs/heads/master
