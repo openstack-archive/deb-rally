@@ -1,0 +1,8 @@
+Code-Review+2: chenhb <chen.haibing1@zte.com.cn>
+Workflow+1: chenhb <chen.haibing1@zte.com.cn>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Tue, 04 Jul 2017 04:42:01 +0000
+Reviewed-on: https://review.openstack.org/480014
+Project: openstack/deb-rally
+Branch: refs/heads/master
