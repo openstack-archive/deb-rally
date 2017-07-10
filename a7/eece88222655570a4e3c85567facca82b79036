@@ -1,0 +1,11 @@
+Code-Review+2: Spyros Trigazis (strigazi) <strigazi@gmail.com>
+Code-Review+1: Hai Shi <shihai1992@gmail.com>
+Code-Review+2: chenhb <chen.haibing1@zte.com.cn>
+Code-Review+2: Boris Pavlovic <boris@pavlovic.me>
+Workflow+1: Andrey Kurilin <andr.kurilin@gmail.com>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Mon, 10 Jul 2017 13:10:43 +0000
+Reviewed-on: https://review.openstack.org/479807
+Project: openstack/deb-rally
+Branch: refs/heads/master
