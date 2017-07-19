@@ -1,0 +1,9 @@
+Verified-1: Mirantis Rally CI <rally-ci@mirantis.com>
+Code-Review+2: Boris Pavlovic <boris@pavlovic.me>
+Workflow+1: Boris Pavlovic <boris@pavlovic.me>
+Verified+2: Jenkins
+Submitted-by: Jenkins
+Submitted-at: Wed, 19 Jul 2017 14:54:24 +0000
+Reviewed-on: https://review.openstack.org/484942
+Project: openstack/deb-rally
+Branch: refs/heads/master
