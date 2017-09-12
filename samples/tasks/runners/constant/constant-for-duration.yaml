@@ -1,9 +1,0 @@
----
-  Dummy.dummy:
-    -
-      args:
-        sleep: 5
-      runner:
-        type: "constant_for_duration"
-        concurrency: 5
-        duration: 30

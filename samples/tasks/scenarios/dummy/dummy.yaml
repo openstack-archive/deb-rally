@@ -1,9 +1,0 @@
----
-  Dummy.dummy:
-    -
-      args:
-        sleep: 5
-      runner:
-        type: "constant"
-        times: 20
-        concurrency: 5
